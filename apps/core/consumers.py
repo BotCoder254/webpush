@@ -70,22 +70,26 @@ class EventsConsumer(AsyncWebsocketConsumer):
         """Get user from token in query parameters or headers."""
         try:
             # Try to get token from query parameters
-            token = self.scope['query_string'].decode().split('token=')[-1].split('&')[0]
+            query_string = self.scope['query_string'].decode()
             
-            if not token:
+            if 'token=' in query_string:
+                token = query_string.split('token=')[-1].split('&')[0]
+            else:
                 # Try to get token from headers
                 headers = dict(self.scope['headers'])
                 auth_header = headers.get(b'authorization', b'').decode()
                 if auth_header.startswith('Bearer '):
                     token = auth_header.split(' ')[1]
+                else:
+                    return AnonymousUser()
             
-            if token:
+            if token and token != 'undefined':
                 # Validate JWT token
                 access_token = AccessToken(token)
                 from django.contrib.auth import get_user_model
                 User = get_user_model()
                 return User.objects.get(id=access_token['user_id'])
+            else:
+                return AnonymousUser()
         except (InvalidToken, TokenError, KeyError, IndexError, Exception):
-            pass
-        
-        return AnonymousUser()
+            return AnonymousUser()

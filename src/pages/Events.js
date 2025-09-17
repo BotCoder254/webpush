@@ -4,9 +4,6 @@ import {
   FiActivity, 
   FiSearch, 
   FiFilter, 
-  FiRefreshCw,
-  FiPlay,
-  FiPause,
   FiEye,
   FiCode,
   FiCalendar,
@@ -26,8 +23,8 @@ import {
   FiCheckSquare,
   FiSquare,
   FiClock,
-  FiWifi,
-  FiWifiOff
+  FiWifiOff,
+  FiLoader
 } from 'react-icons/fi';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
@@ -35,7 +32,6 @@ import JsonViewer from '../components/ui/JsonViewer';
 import webhooksService from '../services/webhooks';
 import toast from 'react-hot-toast';
 import { useTheme } from '../contexts/ThemeContext';
-import { useWebSocket } from '../hooks/useWebSocket';
 
 // Simple List Component (replacing VirtualizedList to avoid component function issues)
 const SimpleList = ({ items, itemHeight, renderItem, height = 600 }) => {
@@ -166,8 +162,7 @@ const Events = () => {
   });
   const [savedFilters, setSavedFilters] = useState([]);
   const [showFilters, setShowFilters] = useState(false);
-  const [isLiveFeed, setIsLiveFeed] = useState(false);
-  const [liveMuted, setLiveMuted] = useState(false);
+  const [isOffline, setIsOffline] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [selectedEvents, setSelectedEvents] = useState(new Set());
@@ -183,36 +178,24 @@ const Events = () => {
     count: 0
   });
 
-  // Real-time WebSocket connection using custom hook
-  const token = localStorage.getItem('access_token');
-  const backendHost = process.env.NODE_ENV === 'development' 
-    ? 'localhost:8000' 
-    : window.location.host;
-  const wsUrl = `ws://${backendHost}/ws/events/`;
   
-  const { connected: wsConnected, connecting: wsConnecting, error: wsError } = useWebSocket(wsUrl, {
-    token,
-    enabled: isLiveFeed && !liveMuted,
-    onMessage: (data) => {
-      if (data.type === 'new_event' && !liveMuted) {
-        setEvents(prev => [data.event, ...prev]);
-        toast.success(`New event: ${data.event.event_type}`, {
-          duration: 3000,
-          position: 'top-right'
-        });
-      }
-    },
-    onOpen: () => {
-      toast.success('Live feed connected via WebSocket');
-    },
-    onMaxReconnectAttempts: () => {
-      console.log('WebSocket max reconnection attempts reached, falling back to polling');
-      startPolling();
+  // Simple offline detection
+  const checkOffline = useCallback(() => {
+    if (!navigator.onLine) {
+      setIsOffline(true);
+      return true;
     }
-  });
+    return false;
+  }, []);
 
-  // Load data with comprehensive validation
+  // Simple load events function
   const loadEvents = useCallback(async (cursor = null, append = false) => {
+    // Check if offline
+    if (checkOffline()) {
+      console.log('Skipping loadEvents - app is offline');
+      return;
+    }
+    
     try {
       setLoading(!append);
       const params = { ...filters };
@@ -272,7 +255,6 @@ const Events = () => {
     } catch (error) {
       console.error('Failed to load events:', error);
       toast.error('Failed to load events');
-      // Set empty state on error
       setEvents([]);
       setPagination({
         hasNextPage: false,
@@ -282,7 +264,7 @@ const Events = () => {
     } finally {
       setLoading(false);
     }
-  }, [filters]);
+  }, [filters, checkOffline]);
 
   const loadEndpoints = useCallback(async () => {
     try {
@@ -293,67 +275,35 @@ const Events = () => {
     }
   }, []);
 
+  // Simple offline detection
+  useEffect(() => {
+    const handleOffline = () => {
+      setIsOffline(true);
+    };
+
+    const handleOnline = () => {
+      setIsOffline(false);
+    };
+
+    window.addEventListener('offline', handleOffline);
+    window.addEventListener('online', handleOnline);
+
+    return () => {
+      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('online', handleOnline);
+    };
+  }, []);
+
+  // Load data on mount
   useEffect(() => {
     loadEvents();
     loadEndpoints();
   }, [loadEvents, loadEndpoints]);
 
-  // Polling for real-time updates (fallback when WebSocket fails)
+  // Reload when filters change
   useEffect(() => {
-    if (!isLiveFeed || liveMuted || wsConnected) return;
-
-    let pollInterval;
-    let retryCount = 0;
-    const maxRetries = 3;
-
-    const startPolling = () => {
-      console.log('Starting polling for live updates...');
-      
-      pollInterval = setInterval(async () => {
-        try {
-          const response = await webhooksService.getEvents('', { limit: 5 });
-          const newEvents = response?.results || response || [];
-          
-          if (Array.isArray(newEvents) && newEvents.length > 0) {
-            setEvents(prev => {
-              const existingIds = new Set(prev.map(e => e.id));
-              const uniqueNewEvents = newEvents.filter(e => e.id && !existingIds.has(e.id));
-              
-              if (uniqueNewEvents.length > 0) {
-                toast.success(`${uniqueNewEvents.length} new event(s) received`, {
-                  duration: 3000,
-                  position: 'top-right'
-                });
-                return [...uniqueNewEvents, ...prev];
-              }
-              return prev;
-            });
-          }
-          
-          retryCount = 0; // Reset retry count on successful poll
-        } catch (error) {
-          console.error('Polling error:', error);
-          retryCount++;
-          
-          if (retryCount >= maxRetries) {
-            console.log('Polling failed after max retries, will retry later');
-            retryCount = 0; // Reset to try again later
-          }
-        }
-      }, 5000); // Poll every 5 seconds
-    };
-
-    // Start polling if WebSocket is not connected
-    if (!wsConnected && !wsConnecting) {
-      startPolling();
-    }
-
-    return () => {
-      if (pollInterval) {
-        clearInterval(pollInterval);
-      }
-    };
-  }, [isLiveFeed, liveMuted, wsConnected, wsConnecting]);
+    loadEvents();
+  }, [filters, loadEvents]);
 
   // Load more events
   const loadMoreEvents = () => {
@@ -605,36 +555,13 @@ const Events = () => {
         </div>
         
         <div className="flex items-center space-x-3">
-          {/* Live feed toggle */}
-          <div className="flex items-center space-x-2">
-            <Button
-              variant={isLiveFeed ? "default" : "outline"}
-              size="sm"
-              onClick={() => setIsLiveFeed(!isLiveFeed)}
-              className="flex items-center space-x-2"
-            >
-              {wsConnected ? <FiWifi className="w-4 h-4" /> : <FiWifiOff className="w-4 h-4" />}
-              <span>Live</span>
-            </Button>
-            {isLiveFeed && (
-              <Button
-                variant={liveMuted ? "outline" : "ghost"}
-                size="sm"
-                onClick={() => setLiveMuted(!liveMuted)}
-              >
-                {liveMuted ? <FiPause className="w-4 h-4" /> : <FiPlay className="w-4 h-4" />}
-              </Button>
-            )}
-          </div>
-          
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => loadEvents()}
-            disabled={loading}
-          >
-            <FiRefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          </Button>
+          {/* Offline indicator */}
+          {isOffline && (
+            <div className="flex items-center space-x-2 px-3 py-1 bg-yellow-100 dark:bg-yellow-900/20 rounded-lg">
+              <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
+              <span className="text-sm text-yellow-700 dark:text-yellow-300">Offline</span>
+            </div>
+          )}
           
           <Button
             variant="outline"
@@ -679,15 +606,6 @@ const Events = () => {
           </p>
         </div>
         
-        <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center space-x-2">
-            <FiWifi className="w-5 h-5 text-purple-500" />
-            <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Live Status</span>
-          </div>
-          <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
-            {wsConnected ? 'Connected' : 'Offline'}
-          </p>
-        </div>
       </div>
 
       {/* Bulk Actions */}
@@ -900,15 +818,25 @@ const Events = () => {
           ) : loading ? (
             <div className="flex items-center justify-center h-full">
               <div className="text-center">
-                <FiRefreshCw className="w-8 h-8 animate-spin mx-auto text-gray-400 mb-4" />
+                <FiLoader className="w-8 h-8 animate-spin mx-auto text-gray-400 mb-4" />
                 <p className="text-gray-500 dark:text-gray-400">Loading events...</p>
               </div>
             </div>
           ) : (
             <div className="flex items-center justify-center h-full">
               <div className="text-center">
-                <FiActivity className="w-8 h-8 mx-auto text-gray-400 mb-4" />
-                <p className="text-gray-500 dark:text-gray-400">No events found</p>
+                {isOffline ? (
+                  <>
+                    <FiWifiOff className="w-8 h-8 mx-auto text-yellow-400 mb-4" />
+                    <p className="text-gray-500 dark:text-gray-400 mb-2">You're offline</p>
+                    <p className="text-sm text-gray-400 dark:text-gray-500">Events will be loaded when you're back online</p>
+                  </>
+                ) : (
+                  <>
+                    <FiActivity className="w-8 h-8 mx-auto text-gray-400 mb-4" />
+                    <p className="text-gray-500 dark:text-gray-400">No events found</p>
+                  </>
+                )}
               </div>
             </div>
           )}
@@ -1071,7 +999,7 @@ const Events = () => {
                               <FiTag className="w-3 h-3 mr-1" />
                               {tag}
                               <button
-                                onClick={() => handleRemoveTag(selectedEvent.id, tag)}
+                                onClick={() => selectedEvent?.id && handleRemoveTag(selectedEvent.id, tag)}
                                 className="ml-1 text-gray-500 hover:text-red-500"
                               >
                                 <FiX className="w-3 h-3" />
@@ -1084,8 +1012,8 @@ const Events = () => {
                             placeholder="Add tag..."
                             value={newTag}
                             onChange={(e) => setNewTag(e.target.value)}
-                            onKeyPress={(e) => {
-                              if (e.key === 'Enter' && newTag.trim()) {
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && newTag.trim() && selectedEvent?.id) {
                                 handleAddTag(selectedEvent.id, newTag.trim());
                                 setNewTag('');
                               }
@@ -1095,7 +1023,7 @@ const Events = () => {
                           <Button
                             size="sm"
                             onClick={() => {
-                              if (newTag.trim()) {
+                              if (newTag.trim() && selectedEvent?.id) {
                                 handleAddTag(selectedEvent.id, newTag.trim());
                                 setNewTag('');
                               }

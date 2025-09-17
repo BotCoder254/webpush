@@ -36,6 +36,7 @@ APPEND_SLASH = False
 # Application definition
 
 INSTALLED_APPS = [
+    'daphne',  # Must be first for ASGI support
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -215,12 +216,6 @@ ASGI_APPLICATION = 'webpush.asgi.application'
 
 CHANNEL_LAYERS = {
     'default': {
-        'BACKEND': 'channels_redis.core.RedisChannelLayer',
-        'CONFIG': {
-            "hosts": [('redis-11972.c325.us-east-1-4.ec2.redns.redis-cloud.com', 11972)],
-            "capacity": 1500,
-            "expiry": 10,
-            "password": os.environ.get('REDIS_PASSWORD', ''),
-        },
+        'BACKEND': 'channels.layers.InMemoryChannelLayer',
     },
 }

@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Offline Detection Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ccc; border-radius: 5px; }
+        .status { padding: 10px; margin: 10px 0; border-radius: 3px; }
+        .online { background-color: #d4edda; color: #155724; }
+        .offline { background-color: #f8d7da; color: #721c24; }
+        button { padding: 10px 15px; margin: 5px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>Offline Detection Test</h1>
+    
+    <div class="test-section">
+        <h2>Network Status</h2>
+        <div id="status" class="status">Checking...</div>
+        <button onclick="checkConnectivity()">Test Connectivity</button>
+        <button onclick="simulateOffline()">Simulate Offline</button>
+        <button onclick="simulateOnline()">Simulate Online</button>
+    </div>
+
+    <div class="test-section">
+        <h2>API Test</h2>
+        <button onclick="testApiCall()">Test API Call</button>
+        <div id="apiResult"></div>
+    </div>
+
+    <script>
+        let isOffline = false;
+
+        function updateStatus() {
+            const statusDiv = document.getElementById('status');
+            if (isOffline) {
+                statusDiv.textContent = 'OFFLINE';
+                statusDiv.className = 'status offline';
+            } else {
+                statusDiv.textContent = 'ONLINE';
+                statusDiv.className = 'status online';
+            }
+        }
+
+        async function checkConnectivity() {
+            try {
+                const response = await fetch('/api/health/', { 
+                    method: 'HEAD',
+                    cache: 'no-cache',
+                    signal: AbortSignal.timeout(3000)
+                });
+                
+                if (response.ok) {
+                    isOffline = false;
+                    console.log('Connectivity check: Online');
+                } else {
+                    isOffline = true;
+                    console.log('Connectivity check: Offline (server error)');
+                }
+            } catch (error) {
+                isOffline = true;
+                console.log('Connectivity check: Offline (network error)', error.message);
+            }
+            updateStatus();
+        }
+
+        function simulateOffline() {
+            isOffline = true;
+            updateStatus();
+            console.log('Simulated offline state');
+        }
+
+        function simulateOnline() {
+            isOffline = false;
+            updateStatus();
+            console.log('Simulated online state');
+        }
+
+        async function testApiCall() {
+            const resultDiv = document.getElementById('apiResult');
+            
+            if (isOffline) {
+                resultDiv.innerHTML = '<div class="status offline">Skipping API call - app is offline</div>';
+                return;
+            }
+
+            try {
+                resultDiv.innerHTML = '<div class="status">Making API call...</div>';
+                const response = await fetch('/api/events/', {
+                    method: 'GET',
+                    cache: 'no-cache'
+                });
+                
+                if (response.ok) {
+                    resultDiv.innerHTML = '<div class="status online">API call successful</div>';
+                } else {
+                    resultDiv.innerHTML = '<div class="status offline">API call failed: ' + response.status + '</div>';
+                }
+            } catch (error) {
+                resultDiv.innerHTML = '<div class="status offline">API call failed: ' + error.message + '</div>';
+            }
+        }
+
+        // Initial check
+        checkConnectivity();
+    </script>
+</body>
+</html>
