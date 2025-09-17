@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { List } from 'react-window';
 import { 
   FiActivity, 
   FiSearch, 
@@ -36,6 +35,96 @@ import JsonViewer from '../components/ui/JsonViewer';
 import webhooksService from '../services/webhooks';
 import toast from 'react-hot-toast';
 import { useTheme } from '../contexts/ThemeContext';
+
+// Custom Virtualized List Component
+const VirtualizedList = ({ items, itemHeight, renderItem, height = 600 }) => {
+  const [scrollTop, setScrollTop] = useState(0);
+  const containerRef = useRef(null);
+
+  // Ensure items is always an array
+  const safeItems = Array.isArray(items) ? items : [];
+  
+  const visibleCount = Math.ceil(height / itemHeight);
+  const startIndex = Math.floor(scrollTop / itemHeight);
+  const endIndex = Math.min(startIndex + visibleCount + 1, safeItems.length);
+  
+  const visibleItems = safeItems.slice(startIndex, endIndex);
+  const totalHeight = safeItems.length * itemHeight;
+  const offsetY = startIndex * itemHeight;
+
+  const handleScroll = (e) => {
+    setScrollTop(e.target.scrollTop);
+  };
+
+  return (
+    <div 
+      ref={containerRef}
+      style={{ height, overflow: 'auto' }}
+      onScroll={handleScroll}
+    >
+      <div style={{ height: totalHeight, position: 'relative' }}>
+        <div style={{ transform: `translateY(${offsetY}px)` }}>
+          {visibleItems.map((item, index) => {
+            const actualIndex = startIndex + index;
+            return (
+              <div key={item?.id || actualIndex} style={{ height: itemHeight }}>
+                {renderItem(item, actualIndex)}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Error Boundary Component
+class EventsErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null, errorInfo: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error('Events Error Boundary caught an error:', error, errorInfo);
+    this.setState({
+      error: error,
+      errorInfo: errorInfo
+    });
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-8">
+          <div className="text-center">
+            <FiX className="w-12 h-12 mx-auto text-red-500 mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
+              Something went wrong
+            </h3>
+            <p className="text-gray-500 dark:text-gray-400 mb-4">
+              There was an error loading the events. Please try refreshing the page.
+            </p>
+            <Button 
+              onClick={() => {
+                this.setState({ hasError: false, error: null, errorInfo: null });
+                window.location.reload();
+              }}
+            >
+              Refresh Page
+            </Button>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 const Events = () => {
   const { isDarkMode } = useTheme();
@@ -73,7 +162,7 @@ const Events = () => {
   const wsRef = useRef(null);
   const [wsConnected, setWsConnected] = useState(false);
 
-  // Load data
+  // Load data with comprehensive validation
   const loadEvents = useCallback(async (cursor = null, append = false) => {
     try {
       setLoading(!append);
@@ -82,15 +171,48 @@ const Events = () => {
       
       const response = await webhooksService.getEvents('', params);
       
-      // Ensure response has the expected structure
-      const eventsData = response?.results || response || [];
+      // Comprehensive data validation
+      let eventsData = [];
+      if (response && typeof response === 'object') {
+        if (Array.isArray(response.results)) {
+          eventsData = response.results;
+        } else if (Array.isArray(response)) {
+          eventsData = response;
+        }
+      }
       
-      if (append && Array.isArray(eventsData)) {
-        setEvents(prev => [...prev, ...eventsData]);
-      } else if (Array.isArray(eventsData)) {
-        setEvents(eventsData);
+      // Validate each event object
+      const validatedEvents = eventsData
+        .filter(event => event && typeof event === 'object' && event.id)
+        .map(event => ({
+          id: event.id || `temp-${Date.now()}-${Math.random()}`,
+          event_type: event.event_type || 'Unknown',
+          status: event.status || 'unknown',
+          created_at: event.created_at || new Date().toISOString(),
+          source_ip: event.source_ip || 'Unknown',
+          data: event.data || {},
+          raw_body: event.raw_body || '',
+          raw_headers: event.raw_headers || {},
+          content_type: event.content_type || 'application/json',
+          user_agent: event.user_agent || 'Unknown',
+          request_id: event.request_id || null,
+          error_message: event.error_message || null,
+          body_size: event.body_size || 0,
+          is_duplicate: event.is_duplicate || false,
+          processed_at: event.processed_at || null,
+          signature: event.signature || null,
+          endpoint: event.endpoint || null,
+          endpoint_id: event.endpoint_id || null,
+          endpoint_name: event.endpoint_name || 'Unknown Endpoint',
+          time_ago: event.time_ago || 'Just now',
+          replays: event.replays || [],
+          forwards: event.forwards || []
+        }));
+      
+      if (append) {
+        setEvents(prev => [...prev, ...validatedEvents]);
       } else {
-        setEvents([]);
+        setEvents(validatedEvents);
       }
       
       setPagination({
@@ -291,16 +413,25 @@ const Events = () => {
     );
   };
 
-  // Event row component
-  const EventRow = ({ index, style }) => {
-    const event = events[index];
-    if (!event || !event.id) return <div style={style}>Loading...</div>;
+  // Event row component for custom virtualized list
+  const EventRow = React.memo(({ event, index }) => {
+    try {
+      // Validate event data
+      if (!event || typeof event !== 'object' || !event.id) {
+        return (
+          <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+            <div className="animate-pulse">
+              <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4 mb-2"></div>
+              <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-1/2"></div>
+            </div>
+          </div>
+        );
+      }
 
-    const isSelected = selectedEvents.has(event.id);
+      const isSelected = selectedEvents.has(event.id);
     
     return (
       <motion.div
-        style={style}
         initial={{ opacity: 0, x: -20 }}
         animate={{ opacity: 1, x: 0 }}
         className={`flex items-center space-x-4 p-4 border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 ${
@@ -387,11 +518,22 @@ const Events = () => {
           </Button>
         </div>
       </motion.div>
-    );
-  };
+      );
+    } catch (error) {
+      console.error('Error rendering event row:', error);
+      return (
+        <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-sm">
+            <p className="text-red-500 text-sm">Error loading event</p>
+          </div>
+        </div>
+      );
+    }
+  }, [selectedEvents, tags, handleEventSelect]);
 
   return (
-    <div className="space-y-6">
+    <EventsErrorBoundary>
+      <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -674,13 +816,14 @@ const Events = () => {
         <div className="h-[600px]">
           {events.length > 0 ? (
             <div>
-              <List
+              <VirtualizedList
+                items={events}
+                itemHeight={120}
                 height={600}
-                itemCount={events.length}
-                itemSize={120}
-              >
-                {EventRow}
-              </List>
+                renderItem={(event, index) => {
+                  return <EventRow event={event} index={index} />;
+                }}
+              />
               {pagination.hasNextPage && (
                 <div className="p-4 text-center">
                   <Button
@@ -1073,7 +1216,8 @@ const Events = () => {
           </motion.div>
         )}
       </AnimatePresence>
-    </div>
+      </div>
+    </EventsErrorBoundary>
   );
 };
 

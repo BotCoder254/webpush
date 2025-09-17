@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { List } from 'react-window';
 import {
   FiActivity,
   FiSearch,
@@ -36,6 +35,87 @@ import { useTheme } from '../contexts/ThemeContext';
 import activityService from '../services/activity';
 import toast from 'react-hot-toast';
 
+// Custom Virtualized List Component
+const VirtualizedList = ({ items, itemHeight, renderItem, height = 800 }) => {
+  const [scrollTop, setScrollTop] = useState(0);
+  const containerRef = useRef(null);
+
+  // Ensure items is always an array
+  const safeItems = Array.isArray(items) ? items : [];
+  
+  const visibleCount = Math.ceil(height / itemHeight);
+  const startIndex = Math.floor(scrollTop / itemHeight);
+  const endIndex = Math.min(startIndex + visibleCount + 1, safeItems.length);
+  
+  const visibleItems = safeItems.slice(startIndex, endIndex);
+  const totalHeight = safeItems.length * itemHeight;
+  const offsetY = startIndex * itemHeight;
+
+  const handleScroll = (e) => {
+    setScrollTop(e.target.scrollTop);
+  };
+
+  return (
+    <div 
+      ref={containerRef}
+      style={{ height, overflow: 'auto' }}
+      onScroll={handleScroll}
+    >
+      <div style={{ height: totalHeight, position: 'relative' }}>
+        <div style={{ transform: `translateY(${offsetY}px)` }}>
+          {visibleItems.map((item, index) => {
+            const actualIndex = startIndex + index;
+            return (
+              <div key={item?.id || actualIndex} style={{ height: itemHeight }}>
+                {renderItem(item, actualIndex)}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Error Boundary Component
+class ActivityErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error('Activity Error Boundary caught an error:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-8">
+          <div className="text-center">
+            <FiAlertCircle className="w-12 h-12 mx-auto text-red-500 mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
+              Something went wrong
+            </h3>
+            <p className="text-gray-500 dark:text-gray-400 mb-4">
+              There was an error displaying the activities.
+            </p>
+            <Button onClick={() => this.setState({ hasError: false, error: null })}>
+              Try Again
+            </Button>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
 const Activity = () => {
   const { isDarkMode } = useTheme();
   const [activities, setActivities] = useState([]);
@@ -64,6 +144,8 @@ const Activity = () => {
 
   // Activity type icons mapping
   const getActivityIcon = (type) => {
+    if (!type) return FiActivity;
+    
     const iconMap = {
       'WEBHOOK_RECEIVED': FiMail,
       'WEBHOOK_CREATED': FiPlus,
@@ -91,6 +173,8 @@ const Activity = () => {
 
   // Activity type colors
   const getActivityColor = (type) => {
+    if (!type) return 'text-gray-600 dark:text-gray-400';
+    
     const colorMap = {
       'WEBHOOK_RECEIVED': 'text-blue-600 dark:text-blue-400',
       'WEBHOOK_CREATED': 'text-green-600 dark:text-green-400',
@@ -120,7 +204,7 @@ const Activity = () => {
   const loadActivities = useCallback(async (cursor = null, append = false) => {
     try {
       setLoading(!append);
-      const params = { ...filters };
+      const params = { ...(filters || {}) };
       if (cursor) params.cursor = cursor;
       
       // Try to fetch from real API first
@@ -129,34 +213,60 @@ const Activity = () => {
         const data = await activityService.getActivities(params);
         console.log('API response:', data);
         
-        // Handle different response structures
-        const results = data?.results || data || [];
+        // Comprehensive data validation
+        let results = [];
+        if (data && typeof data === 'object') {
+          if (Array.isArray(data.results)) {
+            results = data.results;
+          } else if (Array.isArray(data)) {
+            results = data;
+          }
+        }
         
-        if (append && Array.isArray(results)) {
-          setActivities(prev => [...prev, ...results]);
-        } else if (Array.isArray(results)) {
-          setActivities(results);
+        // Validate each activity object
+        const validatedActivities = results
+          .filter(activity => activity && typeof activity === 'object' && activity.id)
+          .map(activity => ({
+            id: activity.id || `temp-${Date.now()}-${Math.random()}`,
+            type: activity.type || 'SYSTEM_ERROR',
+            title: activity.title || 'Unknown Activity',
+            description: activity.description || '',
+            actor: activity.actor || 'system',
+            user_email: activity.user_email || '',
+            target_type: activity.target_type || null,
+            target_id: activity.target_id || null,
+            metadata: activity.metadata || {},
+            ip_address: activity.ip_address || null,
+            user_agent: activity.user_agent || '',
+            is_system: activity.is_system || false,
+            created_at: activity.created_at || new Date().toISOString(),
+            time_ago: activity.time_ago || 'Just now'
+          }));
+        
+        if (append) {
+          setActivities(prev => [...(prev || []), ...validatedActivities]);
         } else {
-          setActivities([]);
+          setActivities(validatedActivities);
         }
         
         setPagination({
-          hasNextPage: !!data?.next,
-          nextCursor: data?.next ? new URL(data.next).searchParams.get('cursor') : null,
-          count: data?.count || results.length || 0
+          hasNextPage: !!(data && data.next),
+          nextCursor: (data && data.next) ? new URL(data.next).searchParams.get('cursor') : null,
+          count: (data && typeof data.count === 'number') ? data.count : (results ? results.length : 0)
         });
         
       } catch (apiError) {
-        console.warn('API not available, using demo data:', apiError.message);
+        console.warn('API not available, using demo data:', apiError?.message || 'Unknown error');
         
         // Only use demo data if the API is completely unavailable
-        if (apiError.message.includes('Network error') || apiError.message.includes('Failed to fetch')) {
+        if ((apiError && apiError.message && apiError.message.includes('Network error')) || 
+            (apiError && apiError.message && apiError.message.includes('Failed to fetch'))) {
           const demoActivities = await generateDemoActivities();
-          setActivities(demoActivities);
+          setActivities(demoActivities || []);
           setPagination({
             hasNextPage: false,
             nextCursor: null,
-            count: demoActivities.length
+            count: (demoActivities && demoActivities.length) || 0
           });
         } else {
           // For other errors (like 401, 403, etc.), show empty state
@@ -166,12 +276,19 @@ const Activity = () => {
             nextCursor: null,
             count: 0
           });
-          toast.error('Failed to load activities: ' + apiError.message);
+          toast.error('Failed to load activities: ' + (apiError?.message || 'Unknown error'));
         }
       }
     } catch (error) {
       console.error('Failed to load activities:', error);
       toast.error('Failed to load activities');
+      // Set safe fallbacks
+      setActivities([]);
+      setPagination({
+        hasNextPage: false,
+        nextCursor: null,
+        count: 0
+      });
     } finally {
       setLoading(false);
     }
@@ -187,24 +304,29 @@ const Activity = () => {
     const demoActivities = [];
     const now = Date.now();
     
-    for (let i = 0; i < 10; i++) {
-      const type = activityTypes[Math.floor(Math.random() * activityTypes.length)];
-      const timeOffset = Math.floor(Math.random() * 24 * 60 * 60 * 1000); // Random time in last 24h
+    try {
+      for (let i = 0; i < 10; i++) {
+        const type = activityTypes[Math.floor(Math.random() * activityTypes.length)];
+        const timeOffset = Math.floor(Math.random() * 24 * 60 * 60 * 1000); // Random time in last 24h
+        
+        demoActivities.push({
+          id: `demo_${i + 1}`,
+          type,
+          title: (activityService && activityService.getMockTitle) ? activityService.getMockTitle(type) : `Mock ${type}`,
+          description: (activityService && activityService.getMockDescription) ? activityService.getMockDescription(type) : `Mock description for ${type}`,
+          actor_name: i % 3 === 0 ? 'System' : ['John Doe', 'Jane Smith', 'Admin'][Math.floor(Math.random() * 3)],
+          is_system: type.includes('SYSTEM') || type.includes('WEBHOOK_RECEIVED'),
+          created_at: new Date(now - timeOffset).toISOString(),
+          time_ago: `${Math.floor(timeOffset / (1000 * 60))} minutes ago`,
+          metadata: (activityService && activityService.getMockMetadata) ? activityService.getMockMetadata(type) : { type, timestamp: now - timeOffset }
+        });
+      }
       
-      demoActivities.push({
-        id: `demo_${i + 1}`,
-        type,
-        title: activityService.getMockTitle(type),
-        description: activityService.getMockDescription(type),
-        actor_name: i % 3 === 0 ? 'System' : ['John Doe', 'Jane Smith', 'Admin'][Math.floor(Math.random() * 3)],
-        is_system: type.includes('SYSTEM') || type.includes('WEBHOOK_RECEIVED'),
-        created_at: new Date(now - timeOffset).toISOString(),
-        time_ago: `${Math.floor(timeOffset / (1000 * 60))} minutes ago`,
-        metadata: activityService.getMockMetadata(type)
-      });
+      return demoActivities.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+    } catch (error) {
+      console.error('Error generating demo activities:', error);
+      return [];
     }
-    
-    return demoActivities.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
   };
 
   useEffect(() => {
@@ -213,6 +335,8 @@ const Activity = () => {
 
   // WebSocket for real-time updates
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}/ws/activity/`;
     
@@ -220,30 +344,37 @@ const Activity = () => {
       wsRef.current = new WebSocket(wsUrl);
       
       wsRef.current.onopen = () => {
+        console.log('WebSocket connected');
         setWsConnected(true);
       };
       
       wsRef.current.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        if (data.type === 'new_activity') {
-          setNewActivities(prev => prev + 1);
-          setShowNewBanner(true);
+        try {
+          const data = JSON.parse(event.data || '{}');
+          if (data && data.type === 'new_activity') {
+            setNewActivities(prev => (prev || 0) + 1);
+            setShowNewBanner(true);
+          }
+        } catch (parseError) {
+          console.error('Error parsing WebSocket message:', parseError);
         }
       };
       
-      wsRef.current.onclose = () => {
+      wsRef.current.onclose = (event) => {
+        console.log('WebSocket connection closed:', event.code, event.reason);
         setWsConnected(false);
       };
       
-      wsRef.current.onerror = () => {
+      wsRef.current.onerror = (error) => {
+        console.log('WebSocket error (this is normal if no WebSocket server):', error);
         setWsConnected(false);
       };
     } catch (error) {
-      console.error('WebSocket error:', error);
+      console.log('WebSocket initialization error (this is normal if no WebSocket server):', error);
     }
 
     return () => {
-      if (wsRef.current) {
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
         wsRef.current.close();
       }
     };
@@ -251,14 +382,16 @@ const Activity = () => {
 
   // Load more activities
   const loadMoreActivities = () => {
-    if (pagination.hasNextPage && !loading) {
+    if (pagination && pagination.hasNextPage && !loading) {
       loadActivities(pagination.nextCursor, true);
     }
   };
 
   // Toggle activity expansion
   const toggleExpanded = (activityId) => {
-    const newExpanded = new Set(expandedActivities);
+    if (!activityId) return;
+    
+    const newExpanded = new Set(expandedActivities || []);
     if (newExpanded.has(activityId)) {
       newExpanded.delete(activityId);
     } else {
@@ -274,19 +407,30 @@ const Activity = () => {
     loadActivities();
   };
 
-  // Activity row component
-  const ActivityRow = ({ index, style }) => {
-    const activity = activities[index];
-    if (!activity || !activity.id) return <div style={style}>Loading...</div>;
+  // Activity row component with error boundary
+  const ActivityRow = React.memo(({ activity, index }) => {
+    try {
+      // Validate activity data
+      if (!activity || typeof activity !== 'object' || !activity.id) {
+        return (
+          <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+            <div className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-sm">
+              <div className="animate-pulse">
+                <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4 mb-2"></div>
+                <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-1/2"></div>
+              </div>
+            </div>
+          </div>
+        );
+      }
 
-    const activityType = activity.type || 'SYSTEM_ERROR';
-    const Icon = getActivityIcon(activityType);
-    const isExpanded = expandedActivities.has(activity.id);
-    const colorClass = getActivityColor(activityType);
+      const activityType = activity.type || 'SYSTEM_ERROR';
+      const Icon = getActivityIcon(activityType);
+      const isExpanded = expandedActivities && expandedActivities.has(activity.id);
+      const colorClass = getActivityColor(activityType);
     
     return (
       <motion.div
-        style={style}
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: index * 0.1 }}
@@ -378,10 +522,34 @@ const Activity = () => {
         </motion.div>
       </motion.div>
     );
-  };
+    } catch (error) {
+      console.error('Error rendering activity row:', error);
+      return (
+        <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-sm">
+            <p className="text-red-500 text-sm">Error loading activity</p>
+          </div>
+        </div>
+      );
+    }
+  }, [expandedActivities, activities, toggleExpanded]);
+
+  // Safe filter operations
+  const safeActivities = activities || [];
+  const userActivities = safeActivities.filter(a => a && !a.is_system);
+  const systemActivities = safeActivities.filter(a => a && a.is_system);
+  const recentActivities = safeActivities.filter(a => {
+    if (!a || !a.created_at) return false;
+    try {
+      return new Date(a.created_at) > new Date(Date.now() - 24*60*60*1000);
+    } catch (error) {
+      return false;
+    }
+  });
 
   return (
-    <div className="space-y-6">
+    <ActivityErrorBoundary>
+      <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -448,7 +616,7 @@ const Activity = () => {
             <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Activities</span>
           </div>
           <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
-            {pagination.count?.toLocaleString() || activities.length}
+            {((pagination && typeof pagination.count === 'number') ? pagination.count : safeActivities.length).toLocaleString()}
           </p>
         </div>
         
@@ -458,7 +626,7 @@ const Activity = () => {
             <span className="text-sm font-medium text-gray-600 dark:text-gray-400">User Actions</span>
           </div>
           <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
-            {activities.filter(a => !a.is_system).length}
+            {userActivities.length}
           </p>
         </div>
         
@@ -468,7 +636,7 @@ const Activity = () => {
             <span className="text-sm font-medium text-gray-600 dark:text-gray-400">System Events</span>
           </div>
           <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
-            {activities.filter(a => a.is_system).length}
+            {systemActivities.length}
           </p>
         </div>
         
@@ -478,7 +646,7 @@ const Activity = () => {
             <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Last 24h</span>
           </div>
           <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
-            {activities.filter(a => new Date(a.created_at) > new Date(Date.now() - 24*60*60*1000)).length}
+            {recentActivities.length}
           </p>
         </div>
       </div>
@@ -498,8 +666,8 @@ const Activity = () => {
               <Input
                 label="Search"
                 placeholder="Search activities..."
-                value={filters.search}
-                onChange={(e) => setFilters({ ...filters, search: e.target.value })}
+                value={(filters && filters.search) || ''}
+                onChange={(e) => setFilters({ ...(filters || {}), search: e.target.value })}
                 icon={FiSearch}
               />
               
@@ -508,8 +676,8 @@ const Activity = () => {
                   Activity Type
                 </label>
                 <select
-                  value={filters.type}
-                  onChange={(e) => setFilters({ ...filters, type: e.target.value })}
+                  value={(filters && filters.type) || ''}
+                  onChange={(e) => setFilters({ ...(filters || {}), type: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                 >
                   <option value="">All Types</option>
@@ -526,8 +694,8 @@ const Activity = () => {
                   Source
                 </label>
                 <select
-                  value={filters.is_system}
-                  onChange={(e) => setFilters({ ...filters, is_system: e.target.value })}
+                  value={(filters && filters.is_system) || ''}
+                  onChange={(e) => setFilters({ ...(filters || {}), is_system: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                 >
                   <option value="">All Sources</option>
@@ -541,15 +709,15 @@ const Activity = () => {
               <Input
                 label="From Date"
                 type="datetime-local"
-                value={filters.date_from}
-                onChange={(e) => setFilters({ ...filters, date_from: e.target.value })}
+                value={(filters && filters.date_from) || ''}
+                onChange={(e) => setFilters({ ...(filters || {}), date_from: e.target.value })}
               />
               
               <Input
                 label="To Date"
                 type="datetime-local"
-                value={filters.date_to}
-                onChange={(e) => setFilters({ ...filters, date_to: e.target.value })}
+                value={(filters && filters.date_to) || ''}
+                onChange={(e) => setFilters({ ...(filters || {}), date_to: e.target.value })}
               />
             </div>
             
@@ -579,16 +747,19 @@ const Activity = () => {
 
       {/* Activities List */}
       <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
-        {activities.length > 0 ? (
+        {safeActivities.length > 0 ? (
           <div>
-            <List
-              height={800}
-              itemCount={activities.length}
-              itemSize={120}
-            >
-              {ActivityRow}
-            </List>
-            {pagination.hasNextPage && (
+            <div style={{ height: '800px', width: '100%' }}>
+              <VirtualizedList
+                items={safeActivities}
+                itemHeight={120}
+                height={800}
+                renderItem={(activity, index) => {
+                  return <ActivityRow activity={activity} index={index} />;
+                }}
+              />
+            </div>
+            {pagination && pagination.hasNextPage && (
               <div className="p-4 text-center border-t border-gray-200 dark:border-gray-700">
                 <Button
                   onClick={loadMoreActivities}
@@ -627,7 +798,8 @@ const Activity = () => {
           </div>
         )}
       </div>
-    </div>
+      </div>
+    </ActivityErrorBoundary>
   );
 };
 
