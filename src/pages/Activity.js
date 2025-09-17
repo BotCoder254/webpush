@@ -279,9 +279,10 @@ const Activity = () => {
     const activity = activities[index];
     if (!activity || !activity.id) return <div style={style}>Loading...</div>;
 
-    const Icon = getActivityIcon(activity.type || 'SYSTEM_ERROR');
+    const activityType = activity.type || 'SYSTEM_ERROR';
+    const Icon = getActivityIcon(activityType);
     const isExpanded = expandedActivities.has(activity.id);
-    const colorClass = getActivityColor(activity.type || 'SYSTEM_ERROR');
+    const colorClass = getActivityColor(activityType);
     
     return (
       <motion.div
@@ -366,7 +367,7 @@ const Activity = () => {
                       </div>
                       <div>
                         <span className="font-medium text-gray-500 dark:text-gray-400">Type:</span>
-                        <p className="text-gray-900 dark:text-white">{activity.type}</p>
+                        <p className="text-gray-900 dark:text-white">{activityType}</p>
                       </div>
                     </div>
                   </motion.div>

@@ -9,6 +9,7 @@ import Register from './pages/Register';
 import ForgotPassword from './pages/ForgotPassword';
 import Dashboard from './pages/Dashboard';
 import Webhooks from './pages/Webhooks';
+import WebhookDetail from './pages/WebhookDetail';
 import Events from './pages/Events';
 import Analytics from './pages/Analytics';
 import Activity from './pages/Activity';
@@ -86,6 +87,7 @@ const AppRoutes = () => {
         <Route index element={<Navigate to="/dashboard" replace />} />
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="webhooks" element={<Webhooks />} />
+        <Route path="webhooks/:id" element={<WebhookDetail />} />
         <Route path="events" element={<Events />} />
         <Route path="activity" element={<Activity />} />
         <Route path="analytics" element={<Analytics />} />

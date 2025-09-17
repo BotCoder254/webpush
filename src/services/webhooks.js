@@ -99,6 +99,15 @@ class WebhooksService {
     }
   }
 
+  async getWebhookAnalytics(id, params = {}) {
+    try {
+      const response = await api.get(`/webhooks/endpoints/${id}/analytics/`, { params });
+      return response.data;
+    } catch (error) {
+      throw this.handleError(error);
+    }
+  }
+
   async getDeliveryDetail(id) {
     try {
       const response = await api.get(`/webhooks/deliveries/${id}/`);

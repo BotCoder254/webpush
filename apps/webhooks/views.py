@@ -54,6 +54,122 @@ class WebhookEndpointViewSet(ModelViewSet):
             is_system=False
         )
     
+    @action(detail=True, methods=['get'])
+    def events(self, request, pk=None):
+        """Get events for this webhook endpoint"""
+        endpoint = self.get_object()
+        events = WebhookEvent.objects.filter(endpoint=endpoint).order_by('-created_at')
+        
+        # Apply pagination
+        paginator = EventsCursorPagination()
+        page = paginator.paginate_queryset(events, request)
+        if page is not None:
+            serializer = WebhookEventSerializer(page, many=True)
+            return paginator.get_paginated_response(serializer.data)
+        
+        serializer = WebhookEventSerializer(events, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=True, methods=['get'])
+    def deliveries(self, request, pk=None):
+        """Get deliveries for this webhook endpoint"""
+        endpoint = self.get_object()
+        deliveries = WebhookDelivery.objects.filter(endpoint=endpoint).order_by('-created_at')
+        
+        # Apply pagination
+        paginator = EventsCursorPagination()
+        page = paginator.paginate_queryset(deliveries, request)
+        if page is not None:
+            serializer = WebhookDeliverySerializer(page, many=True)
+            return paginator.get_paginated_response(serializer.data)
+        
+        serializer = WebhookDeliverySerializer(deliveries, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['get'])
+    def analytics(self, request, pk=None):
+        """Get analytics for this webhook endpoint"""
+        endpoint = self.get_object()
+        
+        # Get date range from query params
+        from django.utils import timezone
+        from datetime import timedelta
+        
+        days = int(request.query_params.get('days', 7))
+        end_date = timezone.now()
+        start_date = end_date - timedelta(days=days)
+        
+        # Get events and deliveries within date range
+        events = WebhookEvent.objects.filter(
+            endpoint=endpoint,
+            created_at__gte=start_date,
+            created_at__lte=end_date
+        )
+        
+        deliveries = WebhookDelivery.objects.filter(
+            endpoint=endpoint,
+            created_at__gte=start_date,
+            created_at__lte=end_date
+        )
+        
+        # Calculate analytics
+        total_events = events.count()
+        total_deliveries = deliveries.count()
+        successful_deliveries = deliveries.filter(status='success').count()
+        failed_deliveries = deliveries.filter(status='failed').count()
+        
+        # Events by day
+        events_by_day = []
+        for i in range(days):
+            day_start = start_date + timedelta(days=i)
+            day_end = day_start + timedelta(days=1)
+            day_events = events.filter(created_at__gte=day_start, created_at__lt=day_end).count()
+            day_successful = deliveries.filter(
+                created_at__gte=day_start, 
+                created_at__lt=day_end, 
+                status='success'
+            ).count()
+            day_failed = deliveries.filter(
+                created_at__gte=day_start, 
+                created_at__lt=day_end, 
+                status='failed'
+            ).count()
+            
+            events_by_day.append({
+                'date': day_start.strftime('%Y-%m-%d'),
+                'day_name': day_start.strftime('%a'),
+                'events': day_events,
+                'successful': day_successful,
+                'failed': day_failed,
+            })
+        
+        # Status distribution
+        status_distribution = [
+            {'status': 'Success', 'count': successful_deliveries},
+            {'status': 'Failed', 'count': failed_deliveries},
+        ]
+        
+        # Response time analytics (mock data for now)
+        avg_response_time = 250  # milliseconds
+        
+        analytics_data = {
+            'total_events': total_events,
+            'total_deliveries': total_deliveries,
+            'successful_deliveries': successful_deliveries,
+            'failed_deliveries': failed_deliveries,
+            'success_rate': (successful_deliveries / total_deliveries * 100) if total_deliveries > 0 else 0,
+            'avg_response_time': avg_response_time,
+            'events_by_day': events_by_day,
+            'status_distribution': status_distribution,
+            'date_range': {
+                'start': start_date.isoformat(),
+                'end': end_date.isoformat(),
+                'days': days,
+            }
+        }
+        
+        return Response(analytics_data)
+
     @action(detail=True, methods=['post'])
     def rotate_secret(self, request, pk=None):
         endpoint = self.get_object()

@@ -23,6 +23,15 @@ const WebhookCard = ({ webhook, onEdit, onDelete, onTest }) => {
   const [secret, setSecret] = useState('');
   const [loading, setLoading] = useState(false);
 
+  // Early return if webhook is invalid
+  if (!webhook || !webhook.id) {
+    return (
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+        <div className="text-gray-500 dark:text-gray-400">Invalid webhook data</div>
+      </div>
+    );
+  }
+
   const copyToClipboard = async (text, type) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -94,7 +103,7 @@ const WebhookCard = ({ webhook, onEdit, onDelete, onTest }) => {
     }
   };
 
-  const StatusIcon = getStatusIcon(webhook.status);
+  const StatusIcon = getStatusIcon(webhook.status || 'unknown');
 
   return (
     <motion.div
@@ -112,15 +121,15 @@ const WebhookCard = ({ webhook, onEdit, onDelete, onTest }) => {
           </div>
           <div>
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-              {webhook.name}
+              {webhook.name || 'Unnamed Webhook'}
             </h3>
             <div className="flex items-center space-x-2 mt-1">
-              <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(webhook.status)}`}>
+              <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(webhook.status || 'unknown')}`}>
                 <StatusIcon className="w-3 h-3 mr-1" />
-                {webhook.status}
+                {webhook.status || 'unknown'}
               </span>
               <span className="text-xs text-gray-500 dark:text-gray-400">
-                Created {new Date(webhook.created_at).toLocaleDateString()}
+                Created {webhook.created_at ? new Date(webhook.created_at).toLocaleDateString() : 'Unknown'}
               </span>
             </div>
           </div>
@@ -161,14 +170,15 @@ const WebhookCard = ({ webhook, onEdit, onDelete, onTest }) => {
         <div className="flex items-center space-x-2">
           <div className="flex-1 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600">
             <code className="text-sm text-gray-900 dark:text-gray-100 break-all">
-              {webhook.webhook_url}
+              {webhook.webhook_url || 'URL not available'}
             </code>
           </div>
           <Button
             variant="outline"
             size="sm"
-            onClick={() => copyToClipboard(webhook.webhook_url, 'URL')}
+            onClick={() => copyToClipboard(webhook.webhook_url || '', 'URL')}
             className="p-2"
+            disabled={!webhook.webhook_url}
           >
             <FiCopy className="w-4 h-4" />
           </Button>
@@ -183,7 +193,7 @@ const WebhookCard = ({ webhook, onEdit, onDelete, onTest }) => {
         <div className="flex items-center space-x-2">
           <div className="flex-1 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600">
             <code className="text-sm text-gray-900 dark:text-gray-100">
-              {showSecret ? secret : webhook.masked_secret}
+              {showSecret ? secret : (webhook.masked_secret || 'Secret not available')}
             </code>
           </div>
           <Button
@@ -255,7 +265,7 @@ const WebhookCard = ({ webhook, onEdit, onDelete, onTest }) => {
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => window.open(`/webhooks/${webhook.id}`, '_blank')}
+          onClick={() => window.location.href = `/webhooks/${webhook.id}`}
         >
           View Details
         </Button>

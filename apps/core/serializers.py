@@ -3,38 +3,24 @@ from .models import ActivityLog
 
 
 class ActivityLogSerializer(serializers.ModelSerializer):
-    time_ago = serializers.ReadOnlyField()
-    icon = serializers.ReadOnlyField()
-    actor_name = serializers.SerializerMethodField()
+    user_email = serializers.CharField(source='user.email', read_only=True)
+    time_ago = serializers.SerializerMethodField()
     
     class Meta:
         model = ActivityLog
         fields = [
-            'id', 'actor', 'actor_name', 'type', 'title', 'description',
-            'target_type', 'target_id', 'metadata', 'ip_address',
-            'is_system', 'created_at', 'time_ago', 'icon'
+            'id', 'user', 'user_email', 'actor', 'type', 'title',
+            'description', 'target_type', 'target_id', 'metadata',
+            'ip_address', 'user_agent', 'is_system', 'created_at', 'time_ago'
         ]
+        read_only_fields = fields
     
-    def get_actor_name(self, obj):
-        if obj.user:
-            return obj.user.get_full_name() or obj.user.email
-        return obj.actor.title() if obj.actor else 'System'
+    def get_time_ago(self, obj):
+        from django.utils.timesince import timesince
+        return f"{timesince(obj.created_at)} ago"
 
 
-class ActivityLogDetailSerializer(serializers.ModelSerializer):
-    time_ago = serializers.ReadOnlyField()
-    icon = serializers.ReadOnlyField()
-    actor_name = serializers.SerializerMethodField()
-    
-    class Meta:
-        model = ActivityLog
-        fields = [
-            'id', 'actor', 'actor_name', 'type', 'title', 'description',
-            'target_type', 'target_id', 'metadata', 'ip_address', 'user_agent',
-            'is_system', 'created_at', 'time_ago', 'icon'
-        ]
-    
-    def get_actor_name(self, obj):
-        if obj.user:
-            return obj.user.get_full_name() or obj.user.email
-        return obj.actor.title() if obj.actor else 'System'
+class ActivityLogDetailSerializer(ActivityLogSerializer):
+    # Inherits all fields from ActivityLogSerializer
+    # Can add more detailed fields if needed for a single activity view
+    pass

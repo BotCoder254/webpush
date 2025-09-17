@@ -4,6 +4,7 @@ import { FiPlus, FiSearch, FiFilter, FiRefreshCw } from 'react-icons/fi';
 import Button from '../components/ui/Button';
 import WebhookCard from '../components/webhooks/WebhookCard';
 import CreateWebhookModal from '../components/webhooks/CreateWebhookModal';
+import EditWebhookModal from '../components/webhooks/EditWebhookModal';
 import TestWebhookModal from '../components/webhooks/TestWebhookModal';
 import webhooksService from '../services/webhooks';
 import toast from 'react-hot-toast';
@@ -14,6 +15,7 @@ const Webhooks = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
   const [showTestModal, setShowTestModal] = useState(false);
   const [selectedWebhook, setSelectedWebhook] = useState(null);
 
@@ -35,25 +37,39 @@ const Webhooks = () => {
   };
 
   const handleCreateSuccess = (newWebhook) => {
-    setWebhooks([newWebhook, ...webhooks]);
+    if (newWebhook && newWebhook.id) {
+      setWebhooks((prevWebhooks) => [newWebhook, ...(prevWebhooks || [])]);
+    }
   };
 
   const handleEdit = (webhook) => {
-    // For now, just show an alert. You can implement an edit modal later
-    toast.info('Edit functionality coming soon!');
+    setSelectedWebhook(webhook);
+    setShowEditModal(true);
+  };
+
+  const handleEditSuccess = (updatedWebhook) => {
+    setWebhooks((prevWebhooks) => 
+      (prevWebhooks || []).map(w => w.id === updatedWebhook.id ? updatedWebhook : w)
+    );
   };
 
   const handleDelete = async (webhook) => {
+    if (!webhook || !webhook.id || !webhook.name) {
+      toast.error('Invalid webhook data');
+      return;
+    }
+
     if (!window.confirm(`Are you sure you want to delete "${webhook.name}"?`)) {
       return;
     }
 
     try {
       await webhooksService.deleteEndpoint(webhook.id);
-      setWebhooks(webhooks.filter(w => w.id !== webhook.id));
+      setWebhooks((prevWebhooks) => (prevWebhooks || []).filter(w => w && w.id !== webhook.id));
       toast.success('Webhook deleted successfully');
     } catch (error) {
       toast.error('Failed to delete webhook');
+      console.error('Error deleting webhook:', error);
     }
   };
 
@@ -62,9 +78,10 @@ const Webhooks = () => {
     setShowTestModal(true);
   };
 
-  const filteredWebhooks = webhooks.filter(webhook => {
-    const matchesSearch = webhook.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         webhook.description?.toLowerCase().includes(searchTerm.toLowerCase());
+  const filteredWebhooks = (webhooks || []).filter(webhook => {
+    if (!webhook || !webhook.id) return false;
+    const matchesSearch = (webhook.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         (webhook.description || '').toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === 'all' || webhook.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
@@ -224,6 +241,13 @@ const Webhooks = () => {
         onSuccess={handleCreateSuccess}
       />
 
+      <EditWebhookModal
+        isOpen={showEditModal}
+        onClose={() => setShowEditModal(false)}
+        webhook={selectedWebhook}
+        onSuccess={handleEditSuccess}
+      />
+      
       <TestWebhookModal
         isOpen={showTestModal}
         onClose={() => setShowTestModal(false)}

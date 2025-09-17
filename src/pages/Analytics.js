@@ -74,18 +74,21 @@ const Analytics = () => {
       setEvents(eventsData);
       
       // Calculate analytics
-      const totalEvents = eventsData.length;
-      const successfulEvents = eventsData.filter(e => e.status === 'processed').length;
+      const safeEventsData = eventsData || [];
+      const totalEvents = safeEventsData.length;
+      const successfulEvents = safeEventsData.filter(e => e && e.status === 'processed').length;
       const successRate = totalEvents > 0 ? (successfulEvents / totalEvents) * 100 : 0;
       
       // Unique IPs
-      const uniqueIPs = new Set(eventsData.map(e => e.source_ip).filter(Boolean)).size;
+      const uniqueIPs = new Set((eventsData || []).map(e => e && e.source_ip).filter(Boolean)).size;
       
       // Events over time (grouped by day/hour)
       const timeGroups = {};
       const groupBy = timeRange === '24h' ? 'hour' : 'day';
       
-      eventsData.forEach(event => {
+      (eventsData || []).forEach(event => {
+        if (!event || !event.created_at) return;
+        
         const date = new Date(event.created_at);
         let key;
         if (groupBy === 'hour') {
@@ -111,21 +114,25 @@ const Analytics = () => {
       
       // Status distribution
       const statusCounts = {};
-      eventsData.forEach(event => {
-        statusCounts[event.status] = (statusCounts[event.status] || 0) + 1;
+      (eventsData || []).forEach(event => {
+        if (event && event.status) {
+          statusCounts[event.status] = (statusCounts[event.status] || 0) + 1;
+        }
       });
       
       const statusDistribution = Object.entries(statusCounts).map(([status, count]) => ({
         status: status.charAt(0).toUpperCase() + status.slice(1),
         count,
-        percentage: ((count / totalEvents) * 100).toFixed(1)
+        percentage: totalEvents > 0 ? ((count / totalEvents) * 100).toFixed(1) : '0.0'
       }));
       
       // Top endpoints
       const endpointCounts = {};
-      eventsData.forEach(event => {
-        const name = event.endpoint_name || 'Unknown';
-        endpointCounts[name] = (endpointCounts[name] || 0) + 1;
+      (eventsData || []).forEach(event => {
+        if (event) {
+          const name = event.endpoint_name || 'Unknown';
+          endpointCounts[name] = (endpointCounts[name] || 0) + 1;
+        }
       });
       
       const topEndpoints = Object.entries(endpointCounts)

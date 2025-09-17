@@ -101,6 +101,10 @@ const Dashboard = () => {
     };
 
     const prepareChartData = (events, endpoints) => {
+      // Ensure arrays are defined
+      const safeEvents = events || [];
+      const safeEndpoints = endpoints || [];
+      
       // Events over time (last 7 days)
       const last7Days = Array.from({ length: 7 }, (_, i) => {
         const date = new Date();
@@ -109,20 +113,22 @@ const Dashboard = () => {
       });
       
       const eventsOverTime = last7Days.map(date => {
-        const dayEvents = events.filter(event => 
-          event.created_at.startsWith(date)
+        const dayEvents = safeEvents.filter(event => 
+          event && event.created_at && event.created_at.startsWith(date)
         );
         return {
           date: new Date(date).toLocaleDateString('en-US', { weekday: 'short' }),
           events: dayEvents.length,
-          processed: dayEvents.filter(e => e.status === 'processed').length,
-          failed: dayEvents.filter(e => e.status === 'failed').length,
+          processed: dayEvents.filter(e => e && e.status === 'processed').length,
+          failed: dayEvents.filter(e => e && e.status === 'failed').length,
         };
       });
       
       // Status distribution
-      const statusCounts = events.reduce((acc, event) => {
-        acc[event.status] = (acc[event.status] || 0) + 1;
+      const statusCounts = safeEvents.reduce((acc, event) => {
+        if (event && event.status) {
+          acc[event.status] = (acc[event.status] || 0) + 1;
+        }
         return acc;
       }, {});
       
@@ -133,12 +139,20 @@ const Dashboard = () => {
       }));
       
       // Endpoint activity
-      const endpointActivity = endpoints.slice(0, 5).map(endpoint => {
-        const endpointEvents = events.filter(e => e.endpoint === endpoint.id);
+      const endpointActivity = safeEndpoints.slice(0, 5).map(endpoint => {
+        if (!endpoint || !endpoint.id || !endpoint.name) {
+          return {
+            name: 'Unknown Endpoint',
+            events: 0,
+            success: 0,
+          };
+        }
+        
+        const endpointEvents = safeEvents.filter(e => e && e.endpoint === endpoint.id);
         return {
           name: endpoint.name.length > 15 ? endpoint.name.slice(0, 15) + '...' : endpoint.name,
           events: endpointEvents.length,
-          success: endpointEvents.filter(e => e.status === 'processed').length,
+          success: endpointEvents.filter(e => e && e.status === 'processed').length,
         };
       });
       

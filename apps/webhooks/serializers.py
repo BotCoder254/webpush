@@ -36,13 +36,28 @@ class WebhookEndpointCreateSerializer(serializers.ModelSerializer):
 
 class WebhookEndpointDetailSerializer(WebhookEndpointSerializer):
     recent_deliveries = serializers.SerializerMethodField()
+    successful_deliveries = serializers.SerializerMethodField()
+    failed_deliveries = serializers.SerializerMethodField()
+    recent_events = serializers.SerializerMethodField()
     
     class Meta(WebhookEndpointSerializer.Meta):
-        fields = WebhookEndpointSerializer.Meta.fields + ['recent_deliveries']
+        fields = WebhookEndpointSerializer.Meta.fields + [
+            'recent_deliveries', 'successful_deliveries', 'failed_deliveries', 'recent_events'
+        ]
     
     def get_recent_deliveries(self, obj):
         recent = obj.deliveries.all()[:10]
         return WebhookDeliverySerializer(recent, many=True).data
+    
+    def get_successful_deliveries(self, obj):
+        return obj.deliveries.filter(status='success').count()
+    
+    def get_failed_deliveries(self, obj):
+        return obj.deliveries.filter(status='failed').count()
+    
+    def get_recent_events(self, obj):
+        recent_events = obj.events.order_by('-created_at')[:10]
+        return WebhookEventSerializer(recent_events, many=True).data
 
 
 class WebhookDeliverySerializer(serializers.ModelSerializer):

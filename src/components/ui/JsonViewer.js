@@ -14,6 +14,13 @@ const JsonViewer = ({
   const { isDarkMode } = useTheme();
   const [isCollapsed, setIsCollapsed] = useState(collapsed);
 
+  // Handle undefined or null data
+  if (data === undefined) {
+    data = { message: 'No data available (undefined)' };
+  } else if (data === null) {
+    data = { message: 'No data available (null)' };
+  }
+
   const handleCopy = (value) => {
     const textToCopy = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
     navigator.clipboard.writeText(textToCopy);
