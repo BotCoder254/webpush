@@ -109,10 +109,24 @@ def webhook_receiver(request, path_token):
     # Verify signature if present
     signature_valid = True
     if signature_header:
+        # Extract the actual signature from the header (remove "sha256=" prefix if present)
+        received_signature = signature_header
+        if signature_header.startswith('sha256='):
+            received_signature = signature_header[7:]  # Remove "sha256=" prefix
+        
+        # Generate expected signature using raw request body
         expected_signature = generate_signature(endpoint.decrypt_secret(), request.body)
-        signature_valid = hmac.compare_digest(signature_header, expected_signature)
+        if expected_signature.startswith('sha256='):
+            expected_signature = expected_signature[7:]  # Remove "sha256=" prefix
+        
+        # Compare signatures securely
+        signature_valid = hmac.compare_digest(received_signature, expected_signature)
         if not signature_valid:
             logger.warning(f'Invalid signature for endpoint {endpoint.name} from IP {source_ip}')
+            logger.debug(f'Received signature: {received_signature}')
+            logger.debug(f'Expected signature: {expected_signature}')
+            logger.debug(f'Request body: {request.body}')
+            logger.debug(f'Secret: {endpoint.decrypt_secret()}')
     
     # Create webhook event (always create, even if duplicate for auditing)
     try:
@@ -136,6 +150,33 @@ def webhook_receiver(request, path_token):
         # Update endpoint last used
         endpoint.last_used_at = timezone.now()
         endpoint.save(update_fields=['last_used_at'])
+        
+        # Send WebSocket notification (gracefully handle Redis connection failures)
+        try:
+            from channels.layers import get_channel_layer
+            from asgiref.sync import async_to_sync
+            
+            channel_layer = get_channel_layer()
+            if channel_layer:
+                # Test Redis connection before sending
+                try:
+                    # Serialize event for WebSocket
+                    from apps.webhooks.serializers import WebhookEventSerializer
+                    event_data = WebhookEventSerializer(event).data
+                    
+                    # Send to user's event group
+                    async_to_sync(channel_layer.group_send)(
+                        f'events_{endpoint.user.id}',
+                        {
+                            'type': 'new_event',
+                            'event': event_data
+                        }
+                    )
+                    logger.debug(f'WebSocket notification sent for event {event.id}')
+                except Exception as redis_error:
+                    logger.warning(f'Redis connection failed, WebSocket notification skipped: {redis_error}')
+        except Exception as e:
+            logger.warning(f'WebSocket notification failed: {e}')
         
         # Log activity
         from .models import log_activity
@@ -189,8 +230,16 @@ def webhook_receiver(request, path_token):
 
 def generate_signature(secret, body):
     """Generate HMAC signature for webhook payload"""
+    # Ensure secret is bytes
+    if isinstance(secret, str):
+        secret = secret.encode('utf-8')
+    
+    # Ensure body is bytes
+    if isinstance(body, str):
+        body = body.encode('utf-8')
+    
     signature = hmac.new(
-        secret.encode('utf-8'),
+        secret,
         body,
         hashlib.sha256
     ).hexdigest()

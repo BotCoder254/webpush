@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Webhook HMAC Signature Calculator</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        textarea {
+            height: 150px;
+            font-family: monospace;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            width: 100%;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+            border-left: 4px solid #007bff;
+        }
+        .signature {
+            font-family: monospace;
+            background-color: #e9ecef;
+            padding: 10px;
+            border-radius: 3px;
+            word-break: break-all;
+            margin-top: 10px;
+        }
+        .copy-btn {
+            background-color: #28a745;
+            color: white;
+            padding: 5px 10px;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 12px;
+            margin-top: 10px;
+        }
+        .copy-btn:hover {
+            background-color: #218838;
+        }
+        .instructions {
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 5px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        .instructions h3 {
+            margin-top: 0;
+            color: #856404;
+        }
+        .instructions ol {
+            margin-bottom: 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔐 Webhook HMAC Signature Calculator</h1>
+        
+        <div class="instructions">
+            <h3>📋 How to Use:</h3>
+            <ol>
+                <li>Enter your webhook URL and signing secret below</li>
+                <li>Enter the JSON payload you want to send</li>
+                <li>Click "Calculate Signature" to generate the HMAC signature</li>
+                <li>Copy the signature and use it in Postman's X-Signature header</li>
+                <li>Make sure to use the URL with trailing slash: <code>http://localhost:8000/webhook/IGIi3LsaTcS3GIDMNsX7NmrwJpDgXhXC3WsVG9rK3zY/</code></li>
+            </ol>
+        </div>
+
+        <div class="form-group">
+            <label for="webhookUrl">Webhook URL:</label>
+            <input type="text" id="webhookUrl" value="http://localhost:8000/webhook/IGIi3LsaTcS3GIDMNsX7NmrwJpDgXhXC3WsVG9rK3zY/" readonly>
+        </div>
+
+        <div class="form-group">
+            <label for="signingSecret">Signing Secret:</label>
+            <input type="text" id="signingSecret" value="r_2GfX5HY7z88zebVejNU5BpYTGySrkmZT505ZFLSVc">
+        </div>
+
+        <div class="form-group">
+            <label for="payload">JSON Payload:</label>
+            <textarea id="payload" placeholder="Enter your JSON payload here...">{
+  "event": "test.webhook",
+  "data": {
+    "id": "test-123",
+    "message": "Hello from Postman!",
+    "timestamp": "2024-01-20T10:30:00Z",
+    "user": {
+      "id": 1,
+      "name": "Test User",
+      "email": "test@example.com"
+    }
+  },
+  "metadata": {
+    "source": "postman",
+    "version": "1.0"
+  }
+}</textarea>
+        </div>
+
+        <button onclick="calculateSignature()">Calculate HMAC Signature</button>
+
+        <div id="result" class="result" style="display: none;">
+            <h3>✅ Generated Signature:</h3>
+            <div id="signature" class="signature"></div>
+            <button class="copy-btn" onclick="copySignature()">Copy Signature</button>
+            
+            <h3>📋 Postman Headers to Use:</h3>
+            <div style="font-family: monospace; background-color: #e9ecef; padding: 10px; border-radius: 3px;">
+                <div><strong>Content-Type:</strong> application/json</div>
+                <div><strong>X-Signature:</strong> <span id="signatureHeader"></span></div>
+                <div><strong>User-Agent:</strong> PostmanTest/1.0</div>
+                <div><strong>X-Request-Id:</strong> test-request-123</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+    <script>
+        function calculateSignature() {
+            const webhookUrl = document.getElementById('webhookUrl').value;
+            const signingSecret = document.getElementById('signingSecret').value;
+            const payload = document.getElementById('payload').value;
+
+            if (!webhookUrl || !signingSecret || !payload) {
+                alert('Please fill in all fields');
+                return;
+            }
+
+            try {
+                // Parse and stringify to ensure consistent formatting
+                const payloadObj = JSON.parse(payload);
+                const normalizedPayload = JSON.stringify(payloadObj);
+                
+                // Calculate HMAC SHA256 signature using the exact same method as Django
+                const signature = CryptoJS.HmacSHA256(normalizedPayload, signingSecret).toString();
+                
+                // Display results
+                document.getElementById('signature').textContent = signature;
+                document.getElementById('signatureHeader').textContent = `sha256=${signature}`;
+                document.getElementById('result').style.display = 'block';
+                
+                console.log('Webhook URL:', webhookUrl);
+                console.log('Signing Secret:', signingSecret);
+                console.log('Payload:', normalizedPayload);
+                console.log('HMAC Signature:', signature);
+                
+            } catch (error) {
+                alert('Error calculating signature: ' + error.message);
+                console.error('Signature calculation error:', error);
+            }
+        }
+
+        function copySignature() {
+            const signature = document.getElementById('signature').textContent;
+            navigator.clipboard.writeText(`sha256=${signature}`).then(() => {
+                alert('Signature copied to clipboard!');
+            }).catch(err => {
+                console.error('Failed to copy signature:', err);
+                // Fallback for older browsers
+                const textArea = document.createElement('textarea');
+                textArea.value = `sha256=${signature}`;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                alert('Signature copied to clipboard!');
+            });
+        }
+
+        // Auto-calculate on page load
+        window.onload = function() {
+            calculateSignature();
+        };
+    </script>
+</body>
+</html>

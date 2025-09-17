@@ -35,45 +35,70 @@ import JsonViewer from '../components/ui/JsonViewer';
 import webhooksService from '../services/webhooks';
 import toast from 'react-hot-toast';
 import { useTheme } from '../contexts/ThemeContext';
+import { useWebSocket } from '../hooks/useWebSocket';
 
-// Custom Virtualized List Component
-const VirtualizedList = ({ items, itemHeight, renderItem, height = 600 }) => {
-  const [scrollTop, setScrollTop] = useState(0);
+// Simple List Component (replacing VirtualizedList to avoid component function issues)
+const SimpleList = ({ items, itemHeight, renderItem, height = 600 }) => {
   const containerRef = useRef(null);
 
   // Ensure items is always an array
   const safeItems = Array.isArray(items) ? items : [];
   
-  const visibleCount = Math.ceil(height / itemHeight);
-  const startIndex = Math.floor(scrollTop / itemHeight);
-  const endIndex = Math.min(startIndex + visibleCount + 1, safeItems.length);
-  
-  const visibleItems = safeItems.slice(startIndex, endIndex);
-  const totalHeight = safeItems.length * itemHeight;
-  const offsetY = startIndex * itemHeight;
-
-  const handleScroll = (e) => {
-    setScrollTop(e.target.scrollTop);
-  };
-
+  // Simple scrollable list without virtualization for now
   return (
     <div 
       ref={containerRef}
       style={{ height, overflow: 'auto' }}
-      onScroll={handleScroll}
+      className="space-y-0"
     >
-      <div style={{ height: totalHeight, position: 'relative' }}>
-        <div style={{ transform: `translateY(${offsetY}px)` }}>
-          {visibleItems.map((item, index) => {
-            const actualIndex = startIndex + index;
+      {safeItems.map((item, index) => {
+        try {
+          if (!item || typeof item !== 'object') {
             return (
-              <div key={item?.id || actualIndex} style={{ height: itemHeight }}>
-                {renderItem(item, actualIndex)}
+              <div key={`loading-${index}`} style={{ height: itemHeight }}>
+                <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+                  <div className="animate-pulse">
+                    <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4 mb-2"></div>
+                    <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-1/2"></div>
+                  </div>
+                </div>
               </div>
             );
-          })}
-        </div>
-      </div>
+          }
+          
+          // Call renderItem function safely
+          const renderedItem = typeof renderItem === 'function' ? renderItem(item, index) : null;
+          
+          if (!renderedItem) {
+            return (
+              <div key={`error-${index}`} style={{ height: itemHeight }}>
+                <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+                  <div className="bg-red-50 dark:bg-red-900/20 rounded-lg p-4">
+                    <p className="text-red-500 text-sm">Error rendering item</p>
+                  </div>
+                </div>
+              </div>
+            );
+          }
+          
+          return (
+            <div key={item.id || `item-${index}`} style={{ height: itemHeight }}>
+              {renderedItem}
+            </div>
+          );
+        } catch (error) {
+          console.error('Error rendering item:', error);
+          return (
+            <div key={`error-${index}`} style={{ height: itemHeight }}>
+              <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+                <div className="bg-red-50 dark:bg-red-900/20 rounded-lg p-4">
+                  <p className="text-red-500 text-sm">Error rendering item</p>
+                </div>
+              </div>
+            </div>
+          );
+        }
+      })}
     </div>
   );
 };
@@ -158,9 +183,33 @@ const Events = () => {
     count: 0
   });
 
-  // Real-time WebSocket connection
-  const wsRef = useRef(null);
-  const [wsConnected, setWsConnected] = useState(false);
+  // Real-time WebSocket connection using custom hook
+  const token = localStorage.getItem('access_token');
+  const backendHost = process.env.NODE_ENV === 'development' 
+    ? 'localhost:8000' 
+    : window.location.host;
+  const wsUrl = `ws://${backendHost}/ws/events/`;
+  
+  const { connected: wsConnected, connecting: wsConnecting, error: wsError } = useWebSocket(wsUrl, {
+    token,
+    enabled: isLiveFeed && !liveMuted,
+    onMessage: (data) => {
+      if (data.type === 'new_event' && !liveMuted) {
+        setEvents(prev => [data.event, ...prev]);
+        toast.success(`New event: ${data.event.event_type}`, {
+          duration: 3000,
+          position: 'top-right'
+        });
+      }
+    },
+    onOpen: () => {
+      toast.success('Live feed connected via WebSocket');
+    },
+    onMaxReconnectAttempts: () => {
+      console.log('WebSocket max reconnection attempts reached, falling back to polling');
+      startPolling();
+    }
+  });
 
   // Load data with comprehensive validation
   const loadEvents = useCallback(async (cursor = null, append = false) => {
@@ -249,50 +298,62 @@ const Events = () => {
     loadEndpoints();
   }, [loadEvents, loadEndpoints]);
 
-  // WebSocket for real-time updates
+  // Polling for real-time updates (fallback when WebSocket fails)
   useEffect(() => {
-    if (!isLiveFeed || liveMuted) return;
+    if (!isLiveFeed || liveMuted || wsConnected) return;
 
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws/events/`;
-    
-    try {
-      wsRef.current = new WebSocket(wsUrl);
+    let pollInterval;
+    let retryCount = 0;
+    const maxRetries = 3;
+
+    const startPolling = () => {
+      console.log('Starting polling for live updates...');
       
-      wsRef.current.onopen = () => {
-        setWsConnected(true);
-        toast.success('Live feed connected');
-      };
-      
-      wsRef.current.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        if (data.type === 'new_event' && !liveMuted) {
-          setEvents(prev => [data.event, ...prev]);
-          toast.success(`New event: ${data.event.event_type}`, {
-            duration: 3000,
-            position: 'top-right'
-          });
+      pollInterval = setInterval(async () => {
+        try {
+          const response = await webhooksService.getEvents('', { limit: 5 });
+          const newEvents = response?.results || response || [];
+          
+          if (Array.isArray(newEvents) && newEvents.length > 0) {
+            setEvents(prev => {
+              const existingIds = new Set(prev.map(e => e.id));
+              const uniqueNewEvents = newEvents.filter(e => e.id && !existingIds.has(e.id));
+              
+              if (uniqueNewEvents.length > 0) {
+                toast.success(`${uniqueNewEvents.length} new event(s) received`, {
+                  duration: 3000,
+                  position: 'top-right'
+                });
+                return [...uniqueNewEvents, ...prev];
+              }
+              return prev;
+            });
+          }
+          
+          retryCount = 0; // Reset retry count on successful poll
+        } catch (error) {
+          console.error('Polling error:', error);
+          retryCount++;
+          
+          if (retryCount >= maxRetries) {
+            console.log('Polling failed after max retries, will retry later');
+            retryCount = 0; // Reset to try again later
+          }
         }
-      };
-      
-      wsRef.current.onclose = () => {
-        setWsConnected(false);
-      };
-      
-      wsRef.current.onerror = () => {
-        setWsConnected(false);
-        toast.error('Live feed connection failed');
-      };
-    } catch (error) {
-      console.error('WebSocket error:', error);
+      }, 5000); // Poll every 5 seconds
+    };
+
+    // Start polling if WebSocket is not connected
+    if (!wsConnected && !wsConnecting) {
+      startPolling();
     }
 
     return () => {
-      if (wsRef.current) {
-        wsRef.current.close();
+      if (pollInterval) {
+        clearInterval(pollInterval);
       }
     };
-  }, [isLiveFeed, liveMuted]);
+  }, [isLiveFeed, liveMuted, wsConnected, wsConnecting]);
 
   // Load more events
   const loadMoreEvents = () => {
@@ -816,7 +877,7 @@ const Events = () => {
         <div className="h-[600px]">
           {events.length > 0 ? (
             <div>
-              <VirtualizedList
+              <SimpleList
                 items={events}
                 itemHeight={120}
                 height={600}

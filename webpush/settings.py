@@ -29,6 +29,9 @@ DEBUG = True
 
 ALLOWED_HOSTS = ['localhost', '127.0.0.1']
 
+# Disable APPEND_SLASH to prevent POST data loss on redirects
+APPEND_SLASH = False
+
 
 # Application definition
 
@@ -42,6 +45,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'rest_framework_simplejwt',
     'corsheaders',
+    'channels',
     'apps.authentication',
     'apps.webhooks',
     'apps.core',
@@ -205,3 +209,17 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 # Webhook Settings
 WEBHOOK_SECRET_KEY = os.environ.get('WEBHOOK_SECRET_KEY', 'your-webhook-secret-key-here')
 WEBHOOK_URL_BASE = os.environ.get('WEBHOOK_URL_BASE', 'http://localhost:8000')
+
+# Channels Configuration
+ASGI_APPLICATION = 'webpush.asgi.application'
+
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        'CONFIG': {
+            "hosts": [('127.0.0.1', 6379)],
+            "capacity": 1500,
+            "expiry": 10,
+        },
+    },
+}

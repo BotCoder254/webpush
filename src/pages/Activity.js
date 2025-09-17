@@ -35,44 +35,68 @@ import { useTheme } from '../contexts/ThemeContext';
 import activityService from '../services/activity';
 import toast from 'react-hot-toast';
 
-// Custom Virtualized List Component
-const VirtualizedList = ({ items, itemHeight, renderItem, height = 800 }) => {
-  const [scrollTop, setScrollTop] = useState(0);
+// Simple List Component (replacing VirtualizedList to avoid component function issues)
+const SimpleList = ({ items, itemHeight, renderItem, height = 800 }) => {
   const containerRef = useRef(null);
 
   // Ensure items is always an array
   const safeItems = Array.isArray(items) ? items : [];
   
-  const visibleCount = Math.ceil(height / itemHeight);
-  const startIndex = Math.floor(scrollTop / itemHeight);
-  const endIndex = Math.min(startIndex + visibleCount + 1, safeItems.length);
-  
-  const visibleItems = safeItems.slice(startIndex, endIndex);
-  const totalHeight = safeItems.length * itemHeight;
-  const offsetY = startIndex * itemHeight;
-
-  const handleScroll = (e) => {
-    setScrollTop(e.target.scrollTop);
-  };
-
+  // Simple scrollable list without virtualization for now
   return (
     <div 
       ref={containerRef}
       style={{ height, overflow: 'auto' }}
-      onScroll={handleScroll}
+      className="space-y-0"
     >
-      <div style={{ height: totalHeight, position: 'relative' }}>
-        <div style={{ transform: `translateY(${offsetY}px)` }}>
-          {visibleItems.map((item, index) => {
-            const actualIndex = startIndex + index;
+      {safeItems.map((item, index) => {
+        try {
+          if (!item || typeof item !== 'object') {
             return (
-              <div key={item?.id || actualIndex} style={{ height: itemHeight }}>
-                {renderItem(item, actualIndex)}
+              <div key={`loading-${index}`} style={{ height: itemHeight }}>
+                <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+                  <div className="animate-pulse">
+                    <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4 mb-2"></div>
+                    <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-1/2"></div>
+                  </div>
+                </div>
               </div>
             );
-          })}
-        </div>
-      </div>
+          }
+          
+          // Call renderItem function safely
+          const renderedItem = typeof renderItem === 'function' ? renderItem(item, index) : null;
+          
+          if (!renderedItem) {
+            return (
+              <div key={`error-${index}`} style={{ height: itemHeight }}>
+                <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+                  <div className="bg-red-50 dark:bg-red-900/20 rounded-lg p-4">
+                    <p className="text-red-500 text-sm">Error rendering item</p>
+                  </div>
+                </div>
+              </div>
+            );
+          }
+          
+          return (
+            <div key={item.id || `item-${index}`} style={{ height: itemHeight }}>
+              {renderedItem}
+            </div>
+          );
+        } catch (error) {
+          console.error('Error rendering item:', error);
+          return (
+            <div key={`error-${index}`} style={{ height: itemHeight }}>
+              <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+                <div className="bg-red-50 dark:bg-red-900/20 rounded-lg p-4">
+                  <p className="text-red-500 text-sm">Error rendering item</p>
+                </div>
+              </div>
+            </div>
+          );
+        }
+      })}
     </div>
   );
 };
@@ -750,7 +774,7 @@ const Activity = () => {
         {safeActivities.length > 0 ? (
           <div>
             <div style={{ height: '800px', width: '100%' }}>
-              <VirtualizedList
+              <SimpleList
                 items={safeActivities}
                 itemHeight={120}
                 height={800}
