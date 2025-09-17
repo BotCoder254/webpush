@@ -123,10 +123,16 @@ def webhook_receiver(request, path_token):
         signature_valid = hmac.compare_digest(received_signature, expected_signature)
         if not signature_valid:
             logger.warning(f'Invalid signature for endpoint {endpoint.name} from IP {source_ip}')
-            logger.debug(f'Received signature: {received_signature}')
-            logger.debug(f'Expected signature: {expected_signature}')
-            logger.debug(f'Request body: {request.body}')
-            logger.debug(f'Secret: {endpoint.decrypt_secret()}')
+            logger.warning(f'Received signature: {received_signature}')
+            logger.warning(f'Expected signature: {expected_signature}')
+            logger.warning(f'Request body: {request.body}')
+            logger.warning(f'Secret: {endpoint.decrypt_secret()}')
+            logger.warning(f'Signature header: {signature_header}')
+            
+            # Also log the raw request data for debugging
+            logger.warning(f'Request method: {request.method}')
+            logger.warning(f'Request content type: {request.content_type}')
+            logger.warning(f'Request headers: {dict(request.headers)}')
     
     # Create webhook event (always create, even if duplicate for auditing)
     try:
@@ -158,7 +164,6 @@ def webhook_receiver(request, path_token):
             
             channel_layer = get_channel_layer()
             if channel_layer:
-                # Test Redis connection before sending
                 try:
                     # Serialize event for WebSocket
                     from apps.webhooks.serializers import WebhookEventSerializer
@@ -172,11 +177,13 @@ def webhook_receiver(request, path_token):
                             'event': event_data
                         }
                     )
-                    logger.debug(f'WebSocket notification sent for event {event.id}')
+                    logger.info(f'WebSocket notification sent for event {event.id}')
                 except Exception as redis_error:
                     logger.warning(f'Redis connection failed, WebSocket notification skipped: {redis_error}')
+                    # Don't fail the webhook request if Redis is down
         except Exception as e:
             logger.warning(f'WebSocket notification failed: {e}')
+            # Don't fail the webhook request if WebSocket fails
         
         # Log activity
         from .models import log_activity
