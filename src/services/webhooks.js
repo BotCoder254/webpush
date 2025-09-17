@@ -1,4 +1,5 @@
 import api from './api';
+import axios from 'axios';
 
 // Webhooks service
 class WebhooksService {
@@ -16,6 +17,7 @@ class WebhooksService {
       const response = await api.get(`/webhooks/endpoints/${id}/`);
       return response.data;
     } catch (error) {
+      console.error('Error fetching webhook endpoint:', error);
       throw this.handleError(error);
     }
   }
@@ -140,6 +142,33 @@ class WebhooksService {
       const response = await api.post(`/webhooks/events/${eventId}/forward/`, data);
       return response.data;
     } catch (error) {
+      throw this.handleError(error);
+    }
+  }
+
+  async getWebhookDebugData(pathToken) {
+    if (!pathToken || pathToken === 'undefined') {
+      throw new Error('Invalid path token provided');
+    }
+    
+    try {
+      // Use axios directly since debug endpoint is outside /api/ namespace
+      const baseURL = process.env.REACT_APP_API_BASE_URL?.replace('/api', '') || 'http://localhost:8000';
+      const url = `${baseURL}/debug/webhook/${pathToken}/`;
+      console.log('Making debug request to:', url);
+      
+      const response = await axios.get(url, {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        timeout: 10000,
+      });
+      
+      console.log('Debug response status:', response.status);
+      console.log('Debug response data keys:', Object.keys(response.data || {}));
+      return response.data;
+    } catch (error) {
+      console.error('Debug service error:', error);
       throw this.handleError(error);
     }
   }

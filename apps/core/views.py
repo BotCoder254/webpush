@@ -270,6 +270,64 @@ def api_info(request):
     }, status=status.HTTP_200_OK)
 
 
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def webhook_debug(request, path_token):
+    """Debug endpoint to view webhook data without signature verification"""
+    try:
+        # Find the webhook endpoint
+        from apps.webhooks.models import WebhookEndpoint
+        endpoint = WebhookEndpoint.objects.get(path_token=path_token)
+        
+        # Get recent events for this endpoint
+        from apps.webhooks.models import WebhookEvent
+        recent_events = WebhookEvent.objects.filter(
+            endpoint=endpoint
+        ).order_by('-created_at')[:10]
+        
+        events_data = []
+        for event in recent_events:
+            events_data.append({
+                'id': str(event.id),
+                'event_type': event.event_type,
+                'data': event.data,
+                'raw_body': event.raw_body,
+                'raw_headers': event.raw_headers,
+                'source_ip': event.source_ip,
+                'user_agent': event.user_agent,
+                'content_type': event.content_type,
+                'signature': event.signature,
+                'status': event.status,
+                'error_message': event.error_message,
+                'created_at': event.created_at.isoformat(),
+                'is_duplicate': event.is_duplicate
+            })
+        
+        return Response({
+            'endpoint': {
+                'name': endpoint.name,
+                'path_token': endpoint.path_token,
+                'url': f"{request.build_absolute_uri('/')}webhook/{path_token}/",
+                'secret': endpoint.decrypt_secret(),
+                'created_at': endpoint.created_at.isoformat(),
+                'last_used_at': endpoint.last_used_at.isoformat() if endpoint.last_used_at else None
+            },
+            'recent_events': events_data,
+            'total_events': WebhookEvent.objects.filter(endpoint=endpoint).count()
+        }, status=status.HTTP_200_OK)
+        
+    except WebhookEndpoint.DoesNotExist:
+        return Response({
+            'error': 'Webhook endpoint not found',
+            'path_token': path_token
+        }, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({
+            'error': 'Internal server error',
+            'message': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 # Activity Log Views
 class ActivityCursorPagination(CursorPagination):
     page_size = 50

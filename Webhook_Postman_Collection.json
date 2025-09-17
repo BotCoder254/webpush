@@ -1,0 +1,146 @@
+{
+  "info": {
+    "name": "Webhook Platform API",
+    "description": "Collection for testing webhook functionality",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Send Webhook (POST)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Signature",
+            "value": "sha256={{signature}}",
+            "description": "Use HMAC calculator tool to generate this"
+          },
+          {
+            "key": "User-Agent",
+            "value": "PostmanTest/1.0"
+          },
+          {
+            "key": "X-Request-Id",
+            "value": "test-{{$timestamp}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"event\": \"test.webhook\",\n  \"data\": {\n    \"id\": \"test-123\",\n    \"message\": \"Hello from Postman!\",\n    \"timestamp\": \"2024-01-20T10:30:00Z\",\n    \"user\": {\n      \"id\": 1,\n      \"name\": \"Test User\",\n      \"email\": \"test@example.com\"\n    }\n  },\n  \"metadata\": {\n    \"source\": \"postman\",\n    \"version\": \"1.0\"\n  }\n}"
+        },
+        "url": {
+          "raw": "http://localhost:8000/webhook/IGIi3LsaTcS3GIDMNsX7NmrwJpDgXhXC3WsVG9rK3zY/",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8000",
+          "path": ["webhook", "IGIi3LsaTcS3GIDMNsX7NmrwJpDgXhXC3WsVG9rK3zY", ""]
+        },
+        "description": "Send a webhook request with HMAC signature verification"
+      },
+      "response": []
+    },
+    {
+      "name": "View Webhook Data (GET)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8000/debug/webhook/IGIi3LsaTcS3GIDMNsX7NmrwJpDgXhXC3WsVG9rK3zY/",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8000",
+          "path": ["debug", "webhook", "IGIi3LsaTcS3GIDMNsX7NmrwJpDgXhXC3WsVG9rK3zY", ""]
+        },
+        "description": "View all webhook data and recent events for this endpoint"
+      },
+      "response": []
+    },
+    {
+      "name": "E-commerce Order Webhook",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Signature",
+            "value": "sha256={{signature}}",
+            "description": "Use HMAC calculator tool to generate this"
+          },
+          {
+            "key": "User-Agent",
+            "value": "E-commerce-System/1.0"
+          },
+          {
+            "key": "X-Request-Id",
+            "value": "order-{{$timestamp}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"event\": \"order.completed\",\n  \"data\": {\n    \"order_id\": \"ORD-{{$timestamp}}\",\n    \"customer\": {\n      \"id\": 456,\n      \"email\": \"customer@example.com\",\n      \"name\": \"Jane Smith\"\n    },\n    \"items\": [\n      {\n        \"product_id\": \"PROD-001\",\n        \"name\": \"Laptop\",\n        \"price\": 999.99,\n        \"quantity\": 1\n      },\n      {\n        \"product_id\": \"PROD-002\",\n        \"name\": \"Mouse\",\n        \"price\": 29.99,\n        \"quantity\": 2\n      }\n    ],\n    \"total\": 1059.97,\n    \"currency\": \"USD\",\n    \"status\": \"completed\"\n  },\n  \"metadata\": {\n    \"source\": \"ecommerce_system\",\n    \"version\": \"2.0\"\n  }\n}"
+        },
+        "url": {
+          "raw": "http://localhost:8000/webhook/IGIi3LsaTcS3GIDMNsX7NmrwJpDgXhXC3WsVG9rK3zY/",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8000",
+          "path": ["webhook", "IGIi3LsaTcS3GIDMNsX7NmrwJpDgXhXC3WsVG9rK3zY", ""]
+        },
+        "description": "Send an e-commerce order webhook"
+      },
+      "response": []
+    },
+    {
+      "name": "Payment Webhook",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Signature",
+            "value": "sha256={{signature}}",
+            "description": "Use HMAC calculator tool to generate this"
+          },
+          {
+            "key": "User-Agent",
+            "value": "Payment-Processor/1.0"
+          },
+          {
+            "key": "X-Request-Id",
+            "value": "payment-{{$timestamp}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"event\": \"payment.processed\",\n  \"data\": {\n    \"payment_id\": \"PAY-{{$timestamp}}\",\n    \"amount\": 150.00,\n    \"currency\": \"USD\",\n    \"status\": \"completed\",\n    \"method\": \"credit_card\",\n    \"customer_id\": 123,\n    \"transaction_id\": \"txn_{{$timestamp}}\"\n  },\n  \"metadata\": {\n    \"processor\": \"stripe\",\n    \"version\": \"1.0\"\n  }\n}"
+        },
+        "url": {
+          "raw": "http://localhost:8000/webhook/IGIi3LsaTcS3GIDMNsX7NmrwJpDgXhXC3WsVG9rK3zY/",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8000",
+          "path": ["webhook", "IGIi3LsaTcS3GIDMNsX7NmrwJpDgXhXC3WsVG9rK3zY", ""]
+        },
+        "description": "Send a payment processing webhook"
+      },
+      "response": []
+    }
+  ],
+  "variable": [
+    {
+      "key": "signature",
+      "value": "29e9013bfb1d569b48f89655b266c18369faf9aa2fe89cedfafde9a9f40aabb4",
+      "description": "Default signature - use HMAC calculator tool to generate new ones"
+    }
+  ]
+}

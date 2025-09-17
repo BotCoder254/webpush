@@ -11,7 +11,7 @@ class WebhookEndpointSerializer(serializers.ModelSerializer):
     class Meta:
         model = WebhookEndpoint
         fields = [
-            'id', 'name', 'description', 'webhook_url', 'masked_secret',
+            'id', 'name', 'description', 'path_token', 'webhook_url', 'masked_secret',
             'status', 'created_at', 'updated_at', 'last_used_at',
             'deliveries_count', 'events_count'
         ]

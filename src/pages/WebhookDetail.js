@@ -45,6 +45,8 @@ const WebhookDetail = () => {
   const [eventsLoading, setEventsLoading] = useState(false);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [debugData, setDebugData] = useState(null);
+  const [debugLoading, setDebugLoading] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -59,14 +61,24 @@ const WebhookDetail = () => {
       fetchDeliveries();
     } else if (activeTab === 'analytics' && webhook) {
       fetchAnalytics();
+    } else if (activeTab === 'debug' && webhook && webhook.path_token) {
+      fetchDebugData();
     }
   }, [activeTab, webhook]);
+
+  // Additional effect to fetch debug data when webhook becomes available
+  useEffect(() => {
+    if (activeTab === 'debug' && webhook && webhook.path_token && !debugData) {
+      fetchDebugData();
+    }
+  }, [webhook, activeTab, debugData]);
 
   const fetchWebhookDetails = async () => {
     setLoading(true);
     try {
       const data = await webhooksService.getEndpoint(id);
       setWebhook(data);
+      console.log('Webhook details loaded:', data);
     } catch (error) {
       toast.error('Failed to fetch webhook details');
       console.error('Error fetching webhook:', error);
@@ -111,6 +123,40 @@ const WebhookDetail = () => {
       console.error('Error fetching analytics:', error);
     } finally {
       setAnalyticsLoading(false);
+    }
+  };
+
+  const fetchDebugData = async () => {
+    // If webhook is still loading, wait for it
+    if (loading) {
+      console.log('Webhook still loading, waiting...');
+      return;
+    }
+
+    if (!webhook) {
+      console.error('Webhook not available for debug data');
+      toast.error('Webhook not found');
+      return;
+    }
+
+    if (!webhook.path_token) {
+      console.error('Webhook path_token not available for debug data');
+      console.error('Webhook object:', webhook);
+      toast.error('Webhook path token not available');
+      return;
+    }
+
+    console.log('Fetching debug data for path_token:', webhook.path_token);
+    setDebugLoading(true);
+    try {
+      const data = await webhooksService.getWebhookDebugData(webhook.path_token);
+      console.log('Debug data received:', data);
+      setDebugData(data);
+    } catch (error) {
+      toast.error('Failed to fetch debug data');
+      console.error('Error fetching debug data:', error);
+    } finally {
+      setDebugLoading(false);
     }
   };
 
@@ -244,6 +290,7 @@ const WebhookDetail = () => {
     { id: 'events', label: 'Recent Events', icon: FiList },
     { id: 'deliveries', label: 'Deliveries', icon: FiActivity },
     { id: 'analytics', label: 'Analytics', icon: FiBarChart },
+    { id: 'debug', label: 'Debug Data', icon: FiCode },
     { id: 'settings', label: 'Settings', icon: FiSettings },
   ];
 
@@ -849,6 +896,292 @@ const WebhookDetail = () => {
                 </div>
               </div>
             )}
+          </div>
+        )}
+
+        {activeTab === 'debug' && (
+          <div className="space-y-6">
+            {/* Debug Data Header */}
+            <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                  Webhook Debug Data
+                </h3>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={fetchDebugData}
+                  loading={debugLoading || loading}
+                  disabled={loading || !webhook || !webhook.path_token}
+                  leftIcon={<FiRefreshCw />}
+                >
+                  {loading ? 'Loading...' : 'Refresh'}
+                </Button>
+              </div>
+
+
+              {debugLoading ? (
+                <div className="text-center py-8">
+                  <FiRefreshCw className="w-6 h-6 animate-spin mx-auto text-gray-400 mb-2" />
+                  <p className="text-gray-500 dark:text-gray-400">Loading debug data...</p>
+                </div>
+              ) : loading ? (
+                <div className="text-center py-8">
+                  <FiRefreshCw className="w-6 h-6 animate-spin mx-auto text-gray-400 mb-2" />
+                  <p className="text-gray-500 dark:text-gray-400">Loading webhook details...</p>
+                </div>
+              ) : !webhook ? (
+                <div className="text-center py-8">
+                  <FiCode className="w-12 h-12 mx-auto text-gray-400 mb-4" />
+                  <h4 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
+                    Webhook not found
+                  </h4>
+                  <p className="text-gray-500 dark:text-gray-400 mb-4">
+                    The requested webhook could not be found.
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={fetchWebhookDetails}
+                    loading={loading}
+                    leftIcon={<FiRefreshCw />}
+                  >
+                    Retry
+                  </Button>
+                </div>
+              ) : debugData ? (
+                <div className="space-y-6">
+                  {/* Endpoint Information */}
+                  <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+                    <h4 className="text-md font-semibold text-gray-900 dark:text-white mb-3">
+                      Endpoint Information
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
+                          Name
+                        </label>
+                        <p className="text-sm text-gray-900 dark:text-white">{debugData.endpoint.name}</p>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
+                          Path Token
+                        </label>
+                        <p className="text-sm text-gray-900 dark:text-white font-mono">{debugData.endpoint.path_token}</p>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
+                          Webhook URL
+                        </label>
+                        <div className="flex items-center space-x-2">
+                          <code className="text-sm text-gray-900 dark:text-white bg-gray-100 dark:bg-gray-600 px-2 py-1 rounded flex-1">
+                            {debugData.endpoint.url}
+                          </code>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => copyToClipboard(debugData.endpoint.url, 'URL')}
+                            className="p-1"
+                          >
+                            <FiCopy className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
+                          Signing Secret
+                        </label>
+                        <div className="flex items-center space-x-2">
+                          <code className="text-sm text-gray-900 dark:text-white bg-gray-100 dark:bg-gray-600 px-2 py-1 rounded flex-1">
+                            {debugData.endpoint.secret}
+                          </code>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => copyToClipboard(debugData.endpoint.secret, 'Secret')}
+                            className="p-1"
+                          >
+                            <FiCopy className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
+                          Created At
+                        </label>
+                        <p className="text-sm text-gray-900 dark:text-white">
+                          {new Date(debugData.endpoint.created_at).toLocaleString()}
+                        </p>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
+                          Last Used
+                        </label>
+                        <p className="text-sm text-gray-900 dark:text-white">
+                          {debugData.endpoint.last_used_at 
+                            ? new Date(debugData.endpoint.last_used_at).toLocaleString() 
+                            : 'Never'
+                          }
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Statistics */}
+                  <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+                    <h4 className="text-md font-semibold text-gray-900 dark:text-white mb-3">
+                      Statistics
+                    </h4>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-gray-900 dark:text-white">
+                          {debugData.total_events}
+                        </div>
+                        <div className="text-sm text-gray-500 dark:text-gray-400">Total Events</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-green-600 dark:text-green-400">
+                          {debugData.recent_events.filter(e => e.status === 'processed').length}
+                        </div>
+                        <div className="text-sm text-gray-500 dark:text-gray-400">Successful</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-red-600 dark:text-red-400">
+                          {debugData.recent_events.filter(e => e.status === 'failed').length}
+                        </div>
+                        <div className="text-sm text-gray-500 dark:text-gray-400">Failed</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                          {debugData.recent_events.length}
+                        </div>
+                        <div className="text-sm text-gray-500 dark:text-gray-400">Recent Events</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Recent Events */}
+                  <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+                    <h4 className="text-md font-semibold text-gray-900 dark:text-white mb-3">
+                      Recent Events ({debugData.recent_events.length})
+                    </h4>
+                    {debugData.recent_events.length > 0 ? (
+                      <div className="space-y-4">
+                        {debugData.recent_events.map((event, index) => (
+                          <div
+                            key={event.id || index}
+                            className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 p-4"
+                          >
+                            <div className="flex items-center justify-between mb-3">
+                              <div className="flex items-center space-x-3">
+                                <span className="font-medium text-gray-900 dark:text-white">
+                                  {event.event_type || 'Unknown Event'}
+                                </span>
+                                <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                  event.status === 'processed' 
+                                    ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
+                                    : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
+                                }`}>
+                                  {event.status}
+                                </span>
+                                {event.is_duplicate && (
+                                  <span className="px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400">
+                                    Duplicate
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-sm text-gray-500 dark:text-gray-400">
+                                {new Date(event.created_at).toLocaleString()}
+                              </span>
+                            </div>
+                            
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
+                              <div>
+                                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                                  Source IP
+                                </label>
+                                <p className="text-sm text-gray-900 dark:text-white font-mono">{event.source_ip}</p>
+                              </div>
+                              <div>
+                                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                                  User Agent
+                                </label>
+                                <p className="text-sm text-gray-900 dark:text-white truncate">{event.user_agent}</p>
+                              </div>
+                              <div>
+                                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                                  Content Type
+                                </label>
+                                <p className="text-sm text-gray-900 dark:text-white">{event.content_type}</p>
+                              </div>
+                              <div>
+                                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                                  Signature
+                                </label>
+                                <p className="text-sm text-gray-900 dark:text-white font-mono truncate">
+                                  {event.signature || 'No signature'}
+                                </p>
+                              </div>
+                            </div>
+
+                            {event.error_message && (
+                              <div className="mb-3 p-2 bg-red-50 dark:bg-red-900/20 rounded border border-red-200 dark:border-red-800">
+                                <label className="block text-xs font-medium text-red-600 dark:text-red-400 mb-1">
+                                  Error Message
+                                </label>
+                                <p className="text-sm text-red-700 dark:text-red-300">{event.error_message}</p>
+                              </div>
+                            )}
+
+                            {event.data && (
+                              <div className="mb-3">
+                                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">
+                                  Event Data
+                                </label>
+                                <JsonViewer data={event.data} collapsed={true} />
+                              </div>
+                            )}
+
+                            {event.raw_body && (
+                              <div>
+                                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">
+                                  Raw Body
+                                </label>
+                                <div className="bg-gray-100 dark:bg-gray-600 rounded p-3 max-h-40 overflow-y-auto">
+                                  <pre className="text-xs text-gray-900 dark:text-white whitespace-pre-wrap">
+                                    {event.raw_body}
+                                  </pre>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-8">
+                        <FiList className="w-12 h-12 mx-auto text-gray-400 mb-4" />
+                        <h4 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
+                          No events yet
+                        </h4>
+                        <p className="text-gray-500 dark:text-gray-400">
+                          Send a webhook request to see debug data here.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <FiCode className="w-12 h-12 mx-auto text-gray-400 mb-4" />
+                  <h4 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
+                    No debug data available
+                  </h4>
+                  <p className="text-gray-500 dark:text-gray-400">
+                    Debug data will appear when webhook events are received.
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
