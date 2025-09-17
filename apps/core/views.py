@@ -1,0 +1,295 @@
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
+from rest_framework.response import Response
+from rest_framework import status, generics, permissions
+from rest_framework.pagination import CursorPagination
+from django.views.decorators.csrf import csrf_exempt
+from django.http import JsonResponse, HttpResponse
+from django.db import models
+import json
+import hmac
+import hashlib
+from django.conf import settings
+from apps.webhooks.models import WebhookEndpoint, WebhookEvent, WebhookDelivery
+from django.utils import timezone
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def health_check(request):
+    """Health check endpoint"""
+    return Response({
+        'status': 'healthy',
+        'message': 'WebHook Platform API is running'
+    }, status=status.HTTP_200_OK)
+
+
+def get_client_ip(request):
+    """Get the real client IP address"""
+    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+    if x_forwarded_for:
+        ip = x_forwarded_for.split(',')[0]
+    else:
+        ip = request.META.get('REMOTE_ADDR')
+    return ip
+
+
+@csrf_exempt
+def webhook_receiver(request, path_token):
+    """
+    Enhanced webhook receiver endpoint with proper event ingestion
+    URL pattern: /webhook/<path_token>/
+    """
+    if request.method not in ['POST', 'GET', 'PUT', 'PATCH', 'DELETE']:
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+    
+    start_time = timezone.now()
+    
+    try:
+        # Find the webhook endpoint
+        endpoint = WebhookEndpoint.objects.get(path_token=path_token, status='active')
+    except WebhookEndpoint.DoesNotExist:
+        return JsonResponse({'error': 'Webhook endpoint not found'}, status=404)
+    
+    # Extract request metadata
+    source_ip = get_client_ip(request)
+    user_agent = request.META.get('HTTP_USER_AGENT', '')
+    content_type = request.content_type or ''
+    request_id = request.META.get('HTTP_X_REQUEST_ID', '')
+    event_type = request.META.get('HTTP_X_EVENT_TYPE', 'webhook.received')
+    signature_header = request.META.get('HTTP_X_SIGNATURE', '')
+    
+    # Get raw body
+    raw_body = request.body.decode('utf-8') if request.body else ''
+    
+    # Parse payload
+    try:
+        if content_type == 'application/json' and raw_body:
+            payload = json.loads(raw_body)
+        else:
+            payload = {'raw_data': raw_body} if raw_body else {}
+    except (json.JSONDecodeError, UnicodeDecodeError) as e:
+        payload = {'raw_data': raw_body, 'parse_error': str(e)}
+    
+    # Extract all headers for storage
+    raw_headers = {}
+    for key, value in request.META.items():
+        if key.startswith('HTTP_'):
+            header_name = key[5:].replace('_', '-').lower()
+            raw_headers[header_name] = value
+        elif key in ['CONTENT_TYPE', 'CONTENT_LENGTH']:
+            raw_headers[key.lower().replace('_', '-')] = value
+    
+    # Check for duplicates using request_id and body_hash
+    body_hash = hashlib.sha256(raw_body.encode()).hexdigest() if raw_body else ''
+    is_duplicate = False
+    
+    if request_id:
+        # Check for duplicate by request_id
+        existing_event = WebhookEvent.objects.filter(
+            endpoint=endpoint,
+            request_id=request_id
+        ).first()
+        if existing_event:
+            is_duplicate = True
+    elif body_hash:
+        # Check for duplicate by body_hash (last 5 minutes)
+        five_minutes_ago = timezone.now() - timezone.timedelta(minutes=5)
+        existing_event = WebhookEvent.objects.filter(
+            endpoint=endpoint,
+            body_hash=body_hash,
+            created_at__gte=five_minutes_ago
+        ).first()
+        if existing_event:
+            is_duplicate = True
+    
+    # Verify signature if present
+    signature_valid = True
+    if signature_header:
+        expected_signature = generate_signature(endpoint.decrypt_secret(), request.body)
+        signature_valid = hmac.compare_digest(signature_header, expected_signature)
+        if not signature_valid:
+            logger.warning(f'Invalid signature for endpoint {endpoint.name} from IP {source_ip}')
+    
+    # Create webhook event (always create, even if duplicate for auditing)
+    try:
+        event = WebhookEvent.objects.create(
+            endpoint=endpoint,
+            event_type=event_type,
+            data=payload,
+            raw_body=raw_body,
+            raw_headers=raw_headers,
+            signature=signature_header,
+            source_ip=source_ip,
+            user_agent=user_agent,
+            content_type=content_type,
+            body_hash=body_hash,
+            request_id=request_id,
+            is_duplicate=is_duplicate,
+            status='processed' if signature_valid else 'failed',
+            error_message='' if signature_valid else 'Invalid signature'
+        )
+        
+        # Update endpoint last used
+        endpoint.last_used_at = timezone.now()
+        endpoint.save(update_fields=['last_used_at'])
+        
+        # Log activity
+        from .models import log_activity
+        log_activity(
+            user=endpoint.user,
+            actor='system',
+            activity_type='WEBHOOK_RECEIVED',
+            title=f'Webhook received on {endpoint.name}',
+            description=f'Event type: {event_type} from IP {source_ip}',
+            target_type='event',
+            target_id=str(event.id),
+            metadata={
+                'endpoint_name': endpoint.name,
+                'event_type': event_type,
+                'source_ip': source_ip,
+                'is_duplicate': is_duplicate,
+                'body_size': len(raw_body) if raw_body else 0,
+                'signature_valid': signature_valid
+            },
+            ip_address=source_ip,
+            user_agent=user_agent,
+            is_system=True
+        )
+        
+        logger.info(
+            f'Webhook event created: {event.id} for endpoint {endpoint.name} '
+            f'from IP {source_ip} (duplicate: {is_duplicate})'
+        )
+        
+        # Return appropriate response
+        if not signature_valid:
+            return JsonResponse({
+                'error': 'Invalid signature',
+                'event_id': str(event.id)
+            }, status=401)
+        
+        return JsonResponse({
+            'status': 'success',
+            'message': 'Webhook received successfully',
+            'event_id': str(event.id),
+            'duplicate': is_duplicate
+        }, status=200)
+        
+    except Exception as e:
+        logger.error(f'Failed to create webhook event: {str(e)}')
+        return JsonResponse({
+            'error': 'Internal server error',
+            'message': 'Failed to process webhook'
+        }, status=503)
+
+
+def generate_signature(secret, body):
+    """Generate HMAC signature for webhook payload"""
+    signature = hmac.new(
+        secret.encode('utf-8'),
+        body,
+        hashlib.sha256
+    ).hexdigest()
+    return f'sha256={signature}'
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def api_info(request):
+    """API information endpoint"""
+    return Response({
+        'name': 'WebHook Platform API',
+        'version': '1.0.0',
+        'description': 'Modern webhook platform with user management and endpoint monitoring',
+        'endpoints': {
+            'authentication': '/api/auth/',
+            'webhooks': '/api/webhooks/',
+            'webhook_receiver': '/webhook/<path_token>/',
+            'health': '/api/health/',
+        }
+    }, status=status.HTTP_200_OK)
+
+
+# Activity Log Views
+class ActivityCursorPagination(CursorPagination):
+    page_size = 50
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+    ordering = '-created_at'
+    cursor_query_param = 'cursor'
+
+
+class ActivityLogListView(generics.ListAPIView):
+    permission_classes = [permissions.IsAuthenticated]
+    pagination_class = ActivityCursorPagination
+    
+    def get_queryset(self):
+        from .models import ActivityLog
+        
+        queryset = ActivityLog.objects.filter(
+            user=self.request.user
+        ).select_related('user').order_by('-created_at')
+        
+        # Apply filters
+        activity_type = self.request.query_params.get('type')
+        is_system = self.request.query_params.get('is_system')
+        search = self.request.query_params.get('search')
+        date_from = self.request.query_params.get('date_from')
+        date_to = self.request.query_params.get('date_to')
+        target_type = self.request.query_params.get('target_type')
+        
+        if activity_type:
+            queryset = queryset.filter(type=activity_type)
+        
+        if is_system is not None:
+            queryset = queryset.filter(is_system=is_system.lower() == 'true')
+        
+        if search:
+            queryset = queryset.filter(
+                models.Q(title__icontains=search) |
+                models.Q(description__icontains=search) |
+                models.Q(type__icontains=search)
+            )
+        
+        if target_type:
+            queryset = queryset.filter(target_type=target_type)
+        
+        if date_from:
+            try:
+                from django.utils.dateparse import parse_datetime
+                date_from_parsed = parse_datetime(date_from)
+                if date_from_parsed:
+                    queryset = queryset.filter(created_at__gte=date_from_parsed)
+            except ValueError:
+                pass
+        
+        if date_to:
+            try:
+                from django.utils.dateparse import parse_datetime
+                date_to_parsed = parse_datetime(date_to)
+                if date_to_parsed:
+                    queryset = queryset.filter(created_at__lte=date_to_parsed)
+            except ValueError:
+                pass
+        
+        return queryset
+    
+    def get_serializer_class(self):
+        from .serializers import ActivityLogSerializer
+        return ActivityLogSerializer
+
+
+class ActivityLogDetailView(generics.RetrieveAPIView):
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_queryset(self):
+        from .models import ActivityLog
+        return ActivityLog.objects.filter(user=self.request.user)
+    
+    def get_serializer_class(self):
+        from .serializers import ActivityLogDetailSerializer
+        return ActivityLogDetailSerializer

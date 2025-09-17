@@ -1,70 +1,181 @@
-# Getting Started with Create React App
+# 🚀 WebHook Platform
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+A modern, professional webhook platform built with Django (backend) and React (frontend), featuring a beautiful dark mode, responsive design, and enterprise-grade webhook management capabilities.
 
-## Available Scripts
+## ✨ Features
 
-In the project directory, you can run:
+### 🔐 **Authentication & User Management**
+- Email-based authentication with secure JWT tokens
+- User registration with email validation
+- Password reset functionality with email verification
+- Profile management with avatar support
+- Remember me functionality for persistent sessions
 
-### `npm start`
+### 📡 **Webhook Management**
+- Create unlimited webhook endpoints with unique URLs
+- Auto-generated signing secrets with HMAC SHA-256 verification
+- Secret rotation with confirmation prompts
+- Test webhook functionality with customizable payloads
+- Real-time delivery tracking and event logging
+- Status management (Active, Paused, Disabled)
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+### 📊 **Dashboard & Analytics**
+- Modern dashboard with comprehensive statistics
+- Real-time webhook activity monitoring
+- Delivery success/failure tracking
+- Event history with detailed logs
+- Performance metrics and insights
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+### 🎨 **Modern UI/UX**
+- Dark/Light mode with system preference detection
+- Responsive design for mobile, tablet, and desktop
+- Smooth animations with Framer Motion and GSAP
+- Professional design with Tailwind CSS
+- Collapsible sidebar for better workspace utilization
+- Toast notifications for user feedback
 
-### `npm test`
+## 🛠️ Technology Stack
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+### Backend
+- Django 5.0.6 - Python web framework
+- Django REST Framework 3.15.1 - API development
+- Django REST Framework SimpleJWT 5.3.0 - JWT authentication
+- Django CORS Headers 4.3.1 - CORS handling
+- SQLite - Default database (easily configurable)
 
-### `npm run build`
+### Frontend
+- React 19.1.1 - UI library
+- React Router DOM 6.22.0 - Client-side routing
+- Tailwind CSS 3.4.17 - Utility-first CSS framework
+- Framer Motion 11.0.0 - Smooth animations
+- GSAP 3.12.0 - Advanced animations
+- React Icons 5.0.0 - Beautiful icons
+- React Hook Form 7.50.0 - Form management
+- React Hot Toast 2.4.1 - Toast notifications
+- Axios 1.6.0 - HTTP client
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+## 🚀 Quick Start
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+### Prerequisites
+- Python 3.8+ installed on your system
+- Node.js 16+ and npm installed
+- Git for version control
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+### 1. Backend Setup
 
-### `npm run eject`
+#### Install Python Dependencies
+```bash
+pip install -r requirements.txt
+```
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+#### Set Environment Variables (Windows)
+```bash
+# Run the setup script
+.\set_env.bat
+```
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+#### For Linux/Mac, set these environment variables:
+```bash
+export DEBUG=True
+export SECRET_KEY=your-secret-key-here
+export WEBHOOK_SECRET_KEY=your-webhook-secret-key-here
+export WEBHOOK_URL_BASE=http://localhost:8000
+```
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+#### Run Migrations
+```bash
+python manage.py makemigrations
+python manage.py migrate
+```
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+#### Create Superuser
+```bash
+python manage.py createsuperuser --email admin@example.com
+```
 
-## Learn More
+#### Start Django Development Server
+```bash
+python manage.py runserver
+```
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+The Django API will be available at `http://localhost:8000`
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+### 2. Frontend Setup
 
-### Code Splitting
+#### Install Node Dependencies
+```bash
+npm install
+```
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+#### Start React Development Server
+```bash
+npm start
+```
 
-### Analyzing the Bundle Size
+The React app will be available at `http://localhost:3000`
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+## 📖 Usage Guide
 
-### Making a Progressive Web App
+### 🔐 Authentication Flow
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
+1. **Register** - Create a new account with email and password
+2. **Email Verification** - Verify your email (development: check console)
+3. **Login** - Sign in with your credentials
+4. **Dashboard** - Access your webhook management dashboard
 
-### Advanced Configuration
+### 📡 Managing Webhooks
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
+#### Creating a Webhook Endpoint
+1. Click **"Create Webhook"** in the dashboard
+2. Enter endpoint name and description
+3. Choose initial status (Active/Paused/Disabled)
+4. Click **"Create Endpoint"**
 
-### Deployment
+Your webhook URL will be: `http://localhost:8000/webhook/{unique-token}/`
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
+#### Testing Your Webhook
+1. Click **"Test"** on any webhook card
+2. Choose a payload template or create custom JSON
+3. Click **"Send Test"** to trigger the webhook
+4. Check the delivery logs for results
 
-### `npm run build` fails to minify
+#### Rotating Secrets
+1. Click **"Rotate Secret"** on webhook card
+2. Confirm the action in the modal
+3. Update your webhook consumer with the new secret
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+### 🔒 Webhook Security
+
+All webhooks include an `X-Signature` header with HMAC SHA-256 signature:
+
+```python
+# Python example for verifying webhook signature
+import hmac
+import hashlib
+
+def verify_webhook(payload, signature, secret):
+    expected = hmac.new(
+        secret.encode('utf-8'),
+        payload,
+        hashlib.sha256
+    ).hexdigest()
+    return hmac.compare_digest(f'sha256={expected}', signature)
+```
+
+## 🔧 Configuration
+
+### Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `DEBUG` | Django debug mode | `True` |
+| `SECRET_KEY` | Django secret key | Required |
+| `WEBHOOK_SECRET_KEY` | Webhook encryption key | Required |
+| `WEBHOOK_URL_BASE` | Base URL for webhooks | `http://localhost:8000` |
+| `REACT_APP_API_BASE_URL` | Frontend API URL | `http://localhost:8000/api` |
+
+---
+
+**Made with ❤️ by the WebHook Platform Team**
+
+*Building the future of webhook management, one endpoint at a time.*
