@@ -216,58 +216,135 @@ class WebhookEndpointViewSet(ModelViewSet):
         serializer = WebhookTestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
-        # Create a test event
+        import json
+        import hmac
+        import hashlib
+        import requests
+        from django.utils import timezone
+        
+        # Prepare payload
+        payload_data = serializer.validated_data['payload']
+        payload_json = json.dumps(payload_data)
+        
+        # Create HMAC signature
+        secret = endpoint.decrypt_secret()
+        signature = hmac.new(
+            secret.encode('utf-8'),
+            payload_json.encode('utf-8'),
+            hashlib.sha256
+        ).hexdigest()
+        
+        # Prepare headers
+        headers = {
+            'Content-Type': 'application/json',
+            'X-Signature': f'sha256={signature}',
+            'X-Event-Type': serializer.validated_data['event_type'],
+            'X-Webhook-Test': 'true',
+            'X-Timestamp': str(int(timezone.now().timestamp())),
+            'User-Agent': 'WebhookPlatform/1.0 (Test)',
+        }
+        
+        # Create event record
         event = WebhookEvent.objects.create(
             endpoint=endpoint,
             event_type=serializer.validated_data['event_type'],
-            data=serializer.validated_data['payload']
+            data=payload_data,
+            raw_body=payload_json,
+            raw_headers=headers,
+            signature=f'sha256={signature}',
+            source_ip=request.META.get('REMOTE_ADDR', '127.0.0.1'),
+            user_agent=headers['User-Agent'],
+            content_type='application/json',
+            status='processing'
         )
         
-        # Create a test delivery
+        # Create delivery record
         delivery = WebhookDelivery.objects.create(
             endpoint=endpoint,
-            payload=serializer.validated_data['payload'],
-            headers={'Content-Type': 'application/json'},
-            status='delivered',
-            response_status_code=200,
-            delivery_attempts=1,
-            delivered_at=timezone.now()
+            payload=payload_data,
+            headers=headers,
+            status='pending',
+            delivery_attempts=1
         )
         
+        # Actually send the webhook
+        try:
+            response = requests.post(
+                endpoint.webhook_url,
+                data=payload_json,
+                headers=headers,
+                timeout=30,
+                allow_redirects=True
+            )
+            
+            # Update delivery with response
+            delivery.status = 'delivered' if response.status_code < 400 else 'failed'
+            delivery.response_status_code = response.status_code
+            delivery.response_body = response.text[:1000]  # Limit response body
+            delivery.delivered_at = timezone.now()
+            
+            # Update event status
+            event.status = 'processed' if response.status_code < 400 else 'failed'
+            if response.status_code >= 400:
+                event.error_message = f'HTTP {response.status_code}: {response.text[:200]}'
+            
+        except requests.exceptions.RequestException as e:
+            # Handle request failures
+            delivery.status = 'failed'
+            delivery.response_status_code = 0
+            delivery.response_body = f'Request failed: {str(e)}'
+            
+            event.status = 'failed'
+            event.error_message = f'Request failed: {str(e)}'
+        
+        except Exception as e:
+            # Handle unexpected errors
+            delivery.status = 'failed'
+            delivery.response_status_code = 0
+            delivery.response_body = f'Unexpected error: {str(e)}'
+            
+            event.status = 'failed'
+            event.error_message = f'Unexpected error: {str(e)}'
+        
+        # Save updates
+        delivery.save()
+        event.processed_at = timezone.now()
+        event.save()
+        
+        # Update endpoint last used time
         endpoint.last_used_at = timezone.now()
         endpoint.save()
         
+        # Log activity
+        from apps.core.models import log_activity
+        log_activity(
+            user=request.user,
+            actor=request.user.email if request.user else 'system',
+            activity_type='WEBHOOK_TESTED',
+            title=f'Webhook test sent to {endpoint.name}',
+            description=f'Test webhook sent to "{endpoint.name}" with status: {delivery.status}',
+            target_type='webhook',
+            target_id=str(endpoint.id),
+            metadata={
+                'webhook_name': endpoint.name,
+                'event_type': serializer.validated_data['event_type'],
+                'delivery_status': delivery.status,
+                'response_code': delivery.response_status_code,
+            },
+            ip_address=request.META.get('REMOTE_ADDR'),
+            user_agent=request.META.get('HTTP_USER_AGENT', ''),
+            is_system=False
+        )
+        
         return Response({
             'message': 'Test webhook sent successfully',
-            'event_id': event.id,
-            'delivery_id': delivery.id
+            'event_id': str(event.id),
+            'delivery_id': str(delivery.id),
+            'status': delivery.status,
+            'response_code': delivery.response_status_code
         }, status=status.HTTP_200_OK)
     
-    @action(detail=True, methods=['get'])
-    def deliveries(self, request, pk=None):
-        endpoint = self.get_object()
-        deliveries = endpoint.deliveries.all()
-        
-        page = self.paginate_queryset(deliveries)
-        if page is not None:
-            serializer = WebhookDeliverySerializer(page, many=True)
-            return self.get_paginated_response(serializer.data)
-        
-        serializer = WebhookDeliverySerializer(deliveries, many=True)
-        return Response(serializer.data)
-    
-    @action(detail=True, methods=['get'])
-    def events(self, request, pk=None):
-        endpoint = self.get_object()
-        events = endpoint.events.all()
-        
-        page = self.paginate_queryset(events)
-        if page is not None:
-            serializer = WebhookEventSerializer(page, many=True)
-            return self.get_paginated_response(serializer.data)
-        
-        serializer = WebhookEventSerializer(events, many=True)
-        return Response(serializer.data)
+
 
 
 class WebhookDeliveryDetailView(generics.RetrieveAPIView):

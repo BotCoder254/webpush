@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useForm } from 'react-hook-form';
-import { FiX, FiPlay, FiCode, FiCheck } from 'react-icons/fi';
+import { FiX, FiPlay, FiCode, FiCheck, FiAlertCircle, FiXCircle } from 'react-icons/fi';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
 import webhooksService from '../../services/webhooks';
@@ -23,12 +23,20 @@ const TestWebhookModal = ({ isOpen, onClose, webhook }) => {
     defaultValues: {
       event_type: 'test',
       payload: JSON.stringify({
-        "event": "test",
+        "event": "webhook.test",
         "timestamp": new Date().toISOString(),
+        "webhook_id": webhook?.id || 'test',
         "data": {
-          "message": "This is a test webhook",
-          "user_id": "123",
-          "action": "webhook.test"
+          "message": "This is a test webhook event",
+          "test_id": `test_${Math.random().toString(36).substr(2, 9)}`,
+          "environment": "development",
+          "version": "1.0",
+          "success": true
+        },
+        "metadata": {
+          "source": "webhook_platform",
+          "triggered_by": "manual_test",
+          "request_id": `req_${Math.random().toString(36).substr(2, 12)}`
         }
       }, null, 2),
     },
@@ -82,39 +90,109 @@ const TestWebhookModal = ({ isOpen, onClose, webhook }) => {
     setValue('payload', JSON.stringify(template, null, 2));
   };
 
+  const generateUserId = () => Math.floor(Math.random() * 900000) + 100000;
+  const generateOrderId = () => `ord_${Math.random().toString(36).substr(2, 9)}`;
+  const generatePaymentId = () => `pay_${Math.random().toString(36).substr(2, 9)}`;
+  const generateAmount = () => Math.floor(Math.random() * 50000) / 100; // $0.00 to $500.00
+
   const templates = {
     user_created: {
       event: 'user.created',
       timestamp: new Date().toISOString(),
+      webhook_id: webhook?.id || 'test',
       data: {
-        user_id: '12345',
-        email: 'user@example.com',
+        user_id: generateUserId(),
+        email: `user${generateUserId()}@example.com`,
         name: 'John Doe',
+        phone: '+1-555-0123',
+        country: 'US',
         created_at: new Date().toISOString(),
+        subscription_plan: 'premium',
+        verified: true
       },
+      metadata: {
+        source: 'api',
+        version: '1.0',
+        request_id: `req_${Math.random().toString(36).substr(2, 12)}`
+      }
     },
     order_completed: {
       event: 'order.completed',
       timestamp: new Date().toISOString(),
+      webhook_id: webhook?.id || 'test',
       data: {
-        order_id: 'ord_67890',
-        customer_id: '12345',
-        amount: 99.99,
+        order_id: generateOrderId(),
+        customer_id: generateUserId(),
+        amount: generateAmount(),
         currency: 'USD',
         status: 'completed',
+        items: [
+          {
+            product_id: 'prod_123',
+            name: 'Premium Subscription',
+            quantity: 1,
+            price: generateAmount()
+          }
+        ],
+        shipping_address: {
+          street: '123 Main St',
+          city: 'San Francisco',
+          state: 'CA',
+          zip: '94105',
+          country: 'US'
+        },
+        completed_at: new Date().toISOString()
       },
+      metadata: {
+        payment_method: 'card',
+        processor: 'stripe',
+        request_id: `req_${Math.random().toString(36).substr(2, 12)}`
+      }
     },
     payment_failed: {
       event: 'payment.failed',
       timestamp: new Date().toISOString(),
+      webhook_id: webhook?.id || 'test',
       data: {
-        payment_id: 'pay_13579',
-        order_id: 'ord_67890',
-        amount: 99.99,
+        payment_id: generatePaymentId(),
+        order_id: generateOrderId(),
+        customer_id: generateUserId(),
+        amount: generateAmount(),
         currency: 'USD',
-        error: 'insufficient_funds',
+        error_code: 'insufficient_funds',
+        error_message: 'Your card has insufficient funds',
+        decline_code: 'generic_decline',
+        attempted_at: new Date().toISOString(),
+        retry_count: 1
       },
+      metadata: {
+        payment_method: 'card',
+        last_four: '4242',
+        processor: 'stripe',
+        request_id: `req_${Math.random().toString(36).substr(2, 12)}`
+      }
     },
+    subscription_updated: {
+      event: 'subscription.updated',
+      timestamp: new Date().toISOString(),
+      webhook_id: webhook?.id || 'test',
+      data: {
+        subscription_id: `sub_${Math.random().toString(36).substr(2, 9)}`,
+        customer_id: generateUserId(),
+        plan_id: 'plan_premium',
+        status: 'active',
+        current_period_start: new Date().toISOString(),
+        current_period_end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+        trial_end: null,
+        canceled_at: null,
+        updated_at: new Date().toISOString()
+      },
+      metadata: {
+        previous_plan: 'plan_basic',
+        upgrade_reason: 'user_request',
+        request_id: `req_${Math.random().toString(36).substr(2, 12)}`
+      }
+    }
   };
 
   const modalVariants = {
@@ -166,32 +244,92 @@ const TestWebhookModal = ({ isOpen, onClose, webhook }) => {
               initial={{ scale: 0 }}
               animate={{ scale: 1 }}
               transition={{ delay: 0.2, duration: 0.5, type: 'spring' }}
-              className="w-16 h-16 bg-green-100 dark:bg-green-900 rounded-full flex items-center justify-center mx-auto mb-4"
+              className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 ${
+                testResult.status === 'delivered'
+                  ? 'bg-green-100 dark:bg-green-900'
+                  : testResult.status === 'failed'
+                  ? 'bg-red-100 dark:bg-red-900'
+                  : 'bg-yellow-100 dark:bg-yellow-900'
+              }`}
             >
-              <FiCheck className="w-8 h-8 text-green-600 dark:text-green-400" />
+              {testResult.status === 'delivered' ? (
+                <FiCheck className="w-8 h-8 text-green-600 dark:text-green-400" />
+              ) : testResult.status === 'failed' ? (
+                <FiXCircle className="w-8 h-8 text-red-600 dark:text-red-400" />
+              ) : (
+                <FiAlertCircle className="w-8 h-8 text-yellow-600 dark:text-yellow-400" />
+              )}
             </motion.div>
 
             <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-              Test Successful!
+              {testResult.status === 'delivered' 
+                ? 'Test Successful!' 
+                : testResult.status === 'failed'
+                ? 'Test Failed'
+                : 'Test Completed'
+              }
             </h3>
             <p className="text-gray-600 dark:text-gray-400 mb-6">
-              Your webhook test was sent successfully to {webhook.name}
+              {testResult.status === 'delivered' 
+                ? `Your webhook test was sent successfully to ${webhook.name}`
+                : testResult.status === 'failed'
+                ? `Test webhook failed to deliver to ${webhook.name}`
+                : `Test webhook was sent to ${webhook.name} with unknown status`
+              }
             </p>
 
             <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 mb-6 text-left">
-              <div className="flex justify-between text-sm">
+              <div className="flex justify-between text-sm mb-2">
+                <span className="text-gray-600 dark:text-gray-400">Status:</span>
+                <span className={`font-medium ${
+                  testResult.status === 'delivered' 
+                    ? 'text-green-600 dark:text-green-400' 
+                    : testResult.status === 'failed'
+                    ? 'text-red-600 dark:text-red-400'
+                    : 'text-yellow-600 dark:text-yellow-400'
+                }`}>
+                  {testResult.status || 'Unknown'}
+                </span>
+              </div>
+              {testResult.response_code && (
+                <div className="flex justify-between text-sm mb-2">
+                  <span className="text-gray-600 dark:text-gray-400">Response Code:</span>
+                  <span className={`font-mono text-xs ${
+                    testResult.response_code < 400 
+                      ? 'text-green-600 dark:text-green-400' 
+                      : 'text-red-600 dark:text-red-400'
+                  }`}>
+                    {testResult.response_code}
+                  </span>
+                </div>
+              )}
+              <div className="flex justify-between text-sm mb-2">
                 <span className="text-gray-600 dark:text-gray-400">Event ID:</span>
                 <span className="text-gray-900 dark:text-white font-mono text-xs">
                   {testResult.event_id}
                 </span>
               </div>
-              <div className="flex justify-between text-sm mt-2">
+              <div className="flex justify-between text-sm">
                 <span className="text-gray-600 dark:text-gray-400">Delivery ID:</span>
                 <span className="text-gray-900 dark:text-white font-mono text-xs">
                   {testResult.delivery_id}
                 </span>
               </div>
             </div>
+
+            {testResult.status === 'failed' && testResult.response_code === 404 && (
+              <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 mb-6">
+                <h4 className="text-sm font-medium text-red-800 dark:text-red-200 mb-2">
+                  Common 404 Error Solutions
+                </h4>
+                <ul className="text-sm text-red-700 dark:text-red-300 space-y-1">
+                  <li>• Check if your webhook endpoint URL is correct</li>
+                  <li>• Ensure your server is running and accessible</li>
+                  <li>• Verify the webhook path matches your server routes</li>
+                  <li>• Test with a tool like ngrok for local development</li>
+                </ul>
+              </div>
+            )}
 
             <Button
               variant="primary"
@@ -274,7 +412,7 @@ const TestWebhookModal = ({ isOpen, onClose, webhook }) => {
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                     Quick Templates
                   </label>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 gap-2">
                     {Object.entries(templates).map(([key, template]) => (
                       <Button
                         key={key}
@@ -282,7 +420,7 @@ const TestWebhookModal = ({ isOpen, onClose, webhook }) => {
                         variant="outline"
                         size="sm"
                         onClick={() => handleUseTemplate(template)}
-                        className="text-xs"
+                        className="text-xs capitalize"
                       >
                         {key.replace('_', ' ')}
                       </Button>

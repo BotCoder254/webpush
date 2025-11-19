@@ -71,7 +71,7 @@ class WebhookEndpoint(models.Model):
     
     @property
     def webhook_url(self):
-        return f"{settings.WEBHOOK_URL_BASE}/webhook/{self.path_token}"
+        return f"{settings.WEBHOOK_URL_BASE}/webhook/{self.path_token}/"
     
     @property
     def masked_secret(self):
