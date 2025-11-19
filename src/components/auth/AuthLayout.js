@@ -1,147 +1,58 @@
 import React, { useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { gsap } from 'gsap';
-import { FiZap, FiShield, FiTrendingUp, FiUsers } from 'react-icons/fi';
+import { FiSun, FiMoon } from 'react-icons/fi';
+import { useTheme } from '../../contexts/ThemeContext';
 
 const AuthLayout = ({ children, title = "WebHook Platform" }) => {
+  const { isDark, toggleTheme } = useTheme();
+
   useEffect(() => {
-    // GSAP animation for the background gradient
-    gsap.to(".gradient-bg", {
-      backgroundPosition: "400% 400%",
-      duration: 8,
+    // Subtle floating animation for the image
+    gsap.to(".auth-image", {
+      y: -10,
+      duration: 4,
       ease: "power2.inOut",
       repeat: -1,
       yoyo: true
-    });
-
-    // Floating animation for feature icons
-    gsap.to(".float-1", {
-      y: -20,
-      duration: 3,
-      ease: "power2.inOut",
-      repeat: -1,
-      yoyo: true
-    });
-
-    gsap.to(".float-2", {
-      y: -15,
-      duration: 2.5,
-      ease: "power2.inOut",
-      repeat: -1,
-      yoyo: true,
-      delay: 0.5
-    });
-
-    gsap.to(".float-3", {
-      y: -25,
-      duration: 3.5,
-      ease: "power2.inOut",
-      repeat: -1,
-      yoyo: true,
-      delay: 1
     });
   }, []);
 
-  const features = [
-    {
-      icon: FiZap,
-      title: "Lightning Fast",
-      description: "Process webhooks in milliseconds with our optimized infrastructure"
-    },
-    {
-      icon: FiShield,
-      title: "Secure by Default",
-      description: "Enterprise-grade security with HMAC signature validation"
-    },
-    {
-      icon: FiTrendingUp,
-      title: "Real-time Analytics",
-      description: "Monitor webhook performance with detailed insights and metrics"
-    },
-    {
-      icon: FiUsers,
-      title: "Team Collaboration",
-      description: "Share webhook endpoints and manage access with your team"
-    }
-  ];
+
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex">
-      {/* Left Side - Branding and Features */}
-      <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden">
-        {/* Animated Background */}
-        <div 
-          className="gradient-bg absolute inset-0 bg-gradient-to-br from-primary-600 via-secondary-600 to-accent-600"
-          style={{
-            backgroundSize: "400% 400%",
-            backgroundPosition: "0% 50%"
-          }}
+      {/* Left Side - Image */}
+      <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden bg-gray-100 dark:bg-gray-800">
+        {/* Background Image */}
+        <motion.img
+          src="https://images.unsplash.com/photo-1551434678-e076c223a692?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=2070&q=80"
+          alt="Webhook Platform"
+          className="auth-image w-full h-full object-cover"
+          initial={{ opacity: 0, scale: 1.1 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 1.2 }}
         />
         
-        {/* Overlay */}
-        <div className="absolute inset-0 bg-black/20" />
-        
-        {/* Content */}
-        <div className="relative z-10 flex flex-col justify-center p-12 text-white">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8 }}
-            className="mb-12"
-          >
-            <h1 className="text-4xl font-bold mb-4">{title}</h1>
-            <p className="text-xl opacity-90 leading-relaxed">
-              The modern webhook platform that developers love. 
-              Secure, reliable, and beautifully simple.
-            </p>
-          </motion.div>
-
-          {/* Features Grid */}
-          <div className="grid grid-cols-2 gap-6">
-            {features.map((feature, index) => (
-              <motion.div
-                key={feature.title}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.8, delay: 0.2 + index * 0.1 }}
-                className={`p-4 rounded-xl bg-white/10 backdrop-blur-sm float-${index + 1}`}
-              >
-                <feature.icon className="w-8 h-8 mb-3" />
-                <h3 className="font-semibold mb-2">{feature.title}</h3>
-                <p className="text-sm opacity-80">{feature.description}</p>
-              </motion.div>
-            ))}
-          </div>
-
-          {/* Decorative Elements */}
-          <motion.div
-            animate={{
-              rotate: 360,
-            }}
-            transition={{
-              duration: 20,
-              repeat: Infinity,
-              ease: "linear"
-            }}
-            className="absolute top-20 right-20 w-32 h-32 border border-white/20 rounded-full"
-          />
-          
-          <motion.div
-            animate={{
-              rotate: -360,
-            }}
-            transition={{
-              duration: 30,
-              repeat: Infinity,
-              ease: "linear"
-            }}
-            className="absolute bottom-20 left-20 w-24 h-24 border border-white/10 rounded-full"
-          />
-        </div>
+        {/* Subtle overlay for better contrast */}
+        <div className="absolute inset-0 bg-black/10 dark:bg-black/30" />
       </div>
 
       {/* Right Side - Form */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-8">
+      <div className="w-full lg:w-1/2 flex items-center justify-center p-8 relative">
+        {/* Theme Toggle */}
+        <button
+          onClick={toggleTheme}
+          className="absolute top-6 right-6 p-3 rounded-full bg-white dark:bg-gray-800 shadow-lg hover:shadow-xl transition-all duration-200 border border-gray-200 dark:border-gray-700"
+          aria-label="Toggle theme"
+        >
+          {isDark ? (
+            <FiSun className="w-5 h-5 text-yellow-500" />
+          ) : (
+            <FiMoon className="w-5 h-5 text-gray-600" />
+          )}
+        </button>
+
         <div className="w-full max-w-md">
           <motion.div
             initial={{ opacity: 0, x: 20 }}

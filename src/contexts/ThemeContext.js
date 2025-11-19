@@ -1,8 +1,27 @@
 import React, { createContext, useContext, useReducer, useEffect } from 'react';
 
+// Get initial theme from localStorage or system preference
+const getInitialTheme = () => {
+  if (typeof window !== 'undefined') {
+    // Check if dark class is already applied (from the HTML script)
+    const hasInitialDarkClass = document.documentElement.classList.contains('dark');
+    if (hasInitialDarkClass) {
+      return true;
+    }
+    
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme) {
+      return savedTheme === 'dark';
+    }
+    // Check system preference
+    return window.matchMedia('(prefers-color-scheme: dark)').matches;
+  }
+  return false;
+};
+
 // Initial state
 const initialState = {
-  isDark: false,
+  isDark: getInitialTheme(),
   sidebarCollapsed: false,
 };
 
@@ -53,15 +72,22 @@ const ThemeContext = createContext();
 export const ThemeProvider = ({ children }) => {
   const [state, dispatch] = useReducer(themeReducer, initialState);
 
-  // Load theme preference from localStorage
+  // Initialize theme immediately
   useEffect(() => {
-    const savedTheme = localStorage.getItem('theme');
+    // Apply initial theme to document immediately
+    const applyTheme = (isDark) => {
+      if (isDark) {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+    };
+
+    // Apply the initial theme
+    applyTheme(state.isDark);
+
+    // Load sidebar preference
     const savedSidebar = localStorage.getItem('sidebarCollapsed');
-    
-    if (savedTheme) {
-      dispatch({ type: ThemeActionTypes.SET_THEME, payload: savedTheme === 'dark' });
-    }
-    
     if (savedSidebar) {
       dispatch({ type: ThemeActionTypes.SET_SIDEBAR, payload: savedSidebar === 'true' });
     }
