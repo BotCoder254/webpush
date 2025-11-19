@@ -74,9 +74,43 @@ class WebhookEndpoint(models.Model):
         return f"{settings.WEBHOOK_URL_BASE}/webhook/{self.path_token}/"
     
     @property
+    def subdomain_webhook_url(self):
+        """Generate a subdomain-based webhook URL for external services"""
+        # Generate a consistent subdomain based on the webhook ID
+        import hashlib
+        subdomain_hash = hashlib.md5(str(self.id).encode()).hexdigest()[:8]
+        subdomain = f"wh-{subdomain_hash}"
+        
+        # Use environment variable for base domain or default
+        base_domain = getattr(settings, 'WEBHOOK_SUBDOMAIN_BASE', 'webhook-tunnel.dev')
+        return f"https://{subdomain}.{base_domain}/webhook/{self.path_token}/"
+    
+    @property
+    def ngrok_webhook_url(self):
+        """Generate ngrok URL for this webhook"""
+        import hashlib
+        webhook_hash = hashlib.md5(str(self.id).encode()).hexdigest()[:8]
+        ngrok_subdomain = f"wh-{webhook_hash}"
+        return f"https://{ngrok_subdomain}.ngrok.io/webhook/{self.path_token}/"
+    
+    @property
     def masked_secret(self):
         secret = self.decrypt_secret()
         return f"****{secret[-4:]}"
+    
+    def get_webhook_urls(self):
+        """Get both localhost and subdomain webhook URLs"""
+        # Generate a consistent ngrok subdomain based on webhook ID
+        import hashlib
+        webhook_hash = hashlib.md5(str(self.id).encode()).hexdigest()[:8]
+        ngrok_subdomain = f"wh-{webhook_hash}"
+        
+        return {
+            'localhost': self.webhook_url,
+            'subdomain': self.subdomain_webhook_url,
+            'ngrok_url': f"https://{ngrok_subdomain}.ngrok.io/webhook/{self.path_token}/",
+            'ngrok_free': f"https://your-tunnel-id.ngrok-free.app/webhook/{self.path_token}/"
+        }
 
 
 class WebhookDelivery(models.Model):

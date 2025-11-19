@@ -4,6 +4,9 @@ from .models import WebhookEndpoint, WebhookDelivery, WebhookEvent, WebhookRepla
 
 class WebhookEndpointSerializer(serializers.ModelSerializer):
     webhook_url = serializers.ReadOnlyField()
+    subdomain_webhook_url = serializers.ReadOnlyField()
+    ngrok_webhook_url = serializers.ReadOnlyField()
+    webhook_urls = serializers.SerializerMethodField()
     masked_secret = serializers.ReadOnlyField()
     deliveries_count = serializers.SerializerMethodField()
     events_count = serializers.SerializerMethodField()
@@ -11,8 +14,8 @@ class WebhookEndpointSerializer(serializers.ModelSerializer):
     class Meta:
         model = WebhookEndpoint
         fields = [
-            'id', 'name', 'description', 'path_token', 'webhook_url', 'masked_secret',
-            'status', 'created_at', 'updated_at', 'last_used_at',
+            'id', 'name', 'description', 'path_token', 'webhook_url', 'subdomain_webhook_url', 
+            'ngrok_webhook_url', 'webhook_urls', 'masked_secret', 'status', 'created_at', 'updated_at', 'last_used_at',
             'deliveries_count', 'events_count'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at', 'last_used_at']
@@ -22,6 +25,9 @@ class WebhookEndpointSerializer(serializers.ModelSerializer):
     
     def get_events_count(self, obj):
         return obj.events.count()
+    
+    def get_webhook_urls(self, obj):
+        return obj.get_webhook_urls()
 
 
 class WebhookEndpointCreateSerializer(serializers.ModelSerializer):

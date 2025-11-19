@@ -27,7 +27,7 @@ SECRET_KEY = 'django-insecure-@v-e^o1p6l6*f93*!h3yi)=le@r4@!_thu-fva^^^!h-jv2n8h
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1']
+ALLOWED_HOSTS = ['localhost', '127.0.0.1', '.ngrok.io', '.ngrok-free.app', '.webhook-tunnel.dev']
 
 # Disable APPEND_SLASH to prevent POST data loss on redirects
 APPEND_SLASH = False
@@ -182,6 +182,13 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:5000",
 ]
 
+# Allow all origins for webhook endpoints (they don't use CORS)
+CORS_ALLOW_ALL_ORIGINS = False
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^https://.*\.ngrok\.io$",
+    r"^https://.*\.ngrok-free\.app$",
+]
+
 CORS_ALLOW_CREDENTIALS = True
 
 # Security Settings
@@ -214,6 +221,8 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 # Webhook Settings
 WEBHOOK_SECRET_KEY = os.environ.get('WEBHOOK_SECRET_KEY', 'your-webhook-secret-key-here')
 WEBHOOK_URL_BASE = os.environ.get('WEBHOOK_URL_BASE', 'http://localhost:8000')
+WEBHOOK_SUBDOMAIN_BASE = os.environ.get('WEBHOOK_SUBDOMAIN_BASE', 'webhook-tunnel.dev')
+NGROK_AUTH_TOKEN = '35h4M0GqHII5aiFicj1vNLS4YeJ_73SEq56HR8xFMzdR4RXWT'
 
 # Channels Configuration
 ASGI_APPLICATION = 'webpush.asgi.application'

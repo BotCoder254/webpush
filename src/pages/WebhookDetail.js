@@ -28,6 +28,7 @@ import Button from '../components/ui/Button';
 import JsonViewer from '../components/ui/JsonViewer';
 import EditWebhookModal from '../components/webhooks/EditWebhookModal';
 import EventDetailModal from '../components/webhooks/EventDetailModal';
+import WebhookUrlsModal from '../components/webhooks/WebhookUrlsModal';
 import toast from 'react-hot-toast';
 import webhooksService from '../services/webhooks';
 
@@ -47,6 +48,7 @@ const WebhookDetail = () => {
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showEventModal, setShowEventModal] = useState(false);
+  const [showUrlsModal, setShowUrlsModal] = useState(false);
   const [selectedEventId, setSelectedEventId] = useState(null);
   const [debugData, setDebugData] = useState(null);
   const [debugLoading, setDebugLoading] = useState(false);
@@ -448,25 +450,39 @@ const WebhookDetail = () => {
               </h3>
 
               <div className="space-y-4">
-                {/* Webhook URL */}
+                {/* Webhook URLs */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Webhook URL
+                    Webhook URLs
                   </label>
-                  <div className="flex items-center space-x-2">
-                    <div className="flex-1 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600">
-                      <code className="text-sm text-gray-900 dark:text-gray-100 break-all">
-                        {webhook.webhook_url || 'URL not available'}
-                      </code>
+                  <div className="space-y-3">
+                    {/* Primary URL Display */}
+                    <div className="flex items-center space-x-2">
+                      <div className="flex-1 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600">
+                        <code className="text-sm text-gray-900 dark:text-gray-100 break-all">
+                          {webhook.subdomain_webhook_url || webhook.webhook_url || 'URL not available'}
+                        </code>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => copyToClipboard(webhook.subdomain_webhook_url || webhook.webhook_url || '', 'URL')}
+                        className="p-2"
+                        disabled={!webhook.webhook_url}
+                      >
+                        <FiCopy className="w-4 h-4" />
+                      </Button>
                     </div>
+                    
+                    {/* View All URLs Button */}
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => copyToClipboard(webhook.webhook_url || '', 'URL')}
-                      className="p-2"
-                      disabled={!webhook.webhook_url}
+                      onClick={() => setShowUrlsModal(true)}
+                      leftIcon={<FiGlobe />}
+                      className="w-full"
                     >
-                      <FiCopy className="w-4 h-4" />
+                      View All URL Options
                     </Button>
                   </div>
                 </div>
@@ -1261,6 +1277,13 @@ const WebhookDetail = () => {
           setSelectedEventId(null);
         }}
         eventId={selectedEventId}
+      />
+
+      {/* Webhook URLs Modal */}
+      <WebhookUrlsModal
+        isOpen={showUrlsModal}
+        onClose={() => setShowUrlsModal(false)}
+        webhook={webhook}
       />
     </div>
   );

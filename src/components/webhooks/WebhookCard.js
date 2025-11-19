@@ -12,14 +12,17 @@ import {
   FiActivity,
   FiClock,
   FiCheckCircle,
-  FiXCircle
+  FiXCircle,
+  FiExternalLink
 } from 'react-icons/fi';
 import Button from '../ui/Button';
+import WebhookUrlsModal from './WebhookUrlsModal';
 import toast from 'react-hot-toast';
 import webhooksService from '../../services/webhooks';
 
 const WebhookCard = ({ webhook, onEdit, onDelete, onTest }) => {
   const [showSecret, setShowSecret] = useState(false);
+  const [showUrlsModal, setShowUrlsModal] = useState(false);
   const [secret, setSecret] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -164,25 +167,41 @@ const WebhookCard = ({ webhook, onEdit, onDelete, onTest }) => {
 
       {/* URL Section */}
       <div className="mb-4">
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-          Webhook URL
-        </label>
+        <div className="flex items-center justify-between mb-2">
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+            Webhook URL
+          </label>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowUrlsModal(true)}
+            className="text-xs p-1"
+            leftIcon={<FiExternalLink className="w-3 h-3" />}
+          >
+            All URLs
+          </Button>
+        </div>
         <div className="flex items-center space-x-2">
           <div className="flex-1 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600">
             <code className="text-sm text-gray-900 dark:text-gray-100 break-all">
-              {webhook.webhook_url || 'URL not available'}
+              {webhook.subdomain_webhook_url || webhook.webhook_url || 'URL not available'}
             </code>
           </div>
           <Button
             variant="outline"
             size="sm"
-            onClick={() => copyToClipboard(webhook.webhook_url || '', 'URL')}
+            onClick={() => copyToClipboard(webhook.subdomain_webhook_url || webhook.webhook_url || '', 'URL')}
             className="p-2"
             disabled={!webhook.webhook_url}
           >
             <FiCopy className="w-4 h-4" />
           </Button>
         </div>
+        {webhook.subdomain_webhook_url && (
+          <p className="text-xs text-green-600 dark:text-green-400 mt-1">
+            ✓ Production-ready URL (works with external services)
+          </p>
+        )}
       </div>
 
       {/* Secret Section */}
@@ -270,6 +289,13 @@ const WebhookCard = ({ webhook, onEdit, onDelete, onTest }) => {
           View Details
         </Button>
       </div>
+
+      {/* Webhook URLs Modal */}
+      <WebhookUrlsModal
+        isOpen={showUrlsModal}
+        onClose={() => setShowUrlsModal(false)}
+        webhook={webhook}
+      />
     </motion.div>
   );
 };
