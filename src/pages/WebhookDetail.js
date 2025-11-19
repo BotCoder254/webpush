@@ -27,6 +27,7 @@ import {
 import Button from '../components/ui/Button';
 import JsonViewer from '../components/ui/JsonViewer';
 import EditWebhookModal from '../components/webhooks/EditWebhookModal';
+import EventDetailModal from '../components/webhooks/EventDetailModal';
 import toast from 'react-hot-toast';
 import webhooksService from '../services/webhooks';
 
@@ -45,6 +46,8 @@ const WebhookDetail = () => {
   const [eventsLoading, setEventsLoading] = useState(false);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showEventModal, setShowEventModal] = useState(false);
+  const [selectedEventId, setSelectedEventId] = useState(null);
   const [debugData, setDebugData] = useState(null);
   const [debugLoading, setDebugLoading] = useState(false);
 
@@ -591,14 +594,48 @@ const WebhookDetail = () => {
                   {events.slice(0, 10).map((event) => (
                     <div
                       key={event.id}
-                      className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                      className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors cursor-pointer"
+                      onClick={() => {
+                        setSelectedEventId(event.id);
+                        setShowEventModal(true);
+                      }}
                     >
                       <div className="flex items-center justify-between mb-2">
-                        <span className="font-medium text-gray-900 dark:text-white">
-                          {event.event_type || 'Unknown Event'}
-                        </span>
+                        <div className="flex items-center space-x-3">
+                          <span className="font-medium text-gray-900 dark:text-white">
+                            {event.event_type || 'Unknown Event'}
+                          </span>
+                          {event.status && (
+                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                              event.status === 'processed' 
+                                ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
+                                : event.status === 'failed'
+                                ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
+                                : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400'
+                            }`}>
+                              {event.status === 'processed' ? <FiCheckCircle className="w-3 h-3 mr-1" /> : 
+                               event.status === 'failed' ? <FiXCircle className="w-3 h-3 mr-1" /> : 
+                               <FiClock className="w-3 h-3 mr-1" />}
+                              {event.status}
+                            </span>
+                          )}
+                          {event.is_duplicate && (
+                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400">
+                              Duplicate
+                            </span>
+                          )}
+                        </div>
                         <span className="text-sm text-gray-500 dark:text-gray-400">
                           {event.created_at ? new Date(event.created_at).toLocaleString() : 'Unknown time'}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-sm text-gray-600 dark:text-gray-400">
+                        <span>
+                          {event.source_ip && `From ${event.source_ip}`}
+                          {event.body_size && ` • ${event.body_size} bytes`}
+                        </span>
+                        <span className="text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300">
+                          Click to view details →
                         </span>
                       </div>
                       {event.data && (
@@ -1214,6 +1251,16 @@ const WebhookDetail = () => {
         onClose={() => setShowEditModal(false)}
         webhook={webhook}
         onSuccess={handleEditSuccess}
+      />
+
+      {/* Event Detail Modal */}
+      <EventDetailModal
+        isOpen={showEventModal}
+        onClose={() => {
+          setShowEventModal(false);
+          setSelectedEventId(null);
+        }}
+        eventId={selectedEventId}
       />
     </div>
   );
